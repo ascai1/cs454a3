@@ -6,42 +6,14 @@
 #include <utility>
 #include <vector>
 
-#include <netinet/in.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
+#include "packet.h"
 #include "socket.h"
 
-#define MAX_HOST_LENGTH 64
-#define MAX_PORT_LENGTH 8
-#define MAX_NAME_LENGTH 64
-
-#define REGISTER 0x10
-#define REGISTER_SUCCESS 0x11
-#define REGISTER_FAILURE 0x12
-
-#define LOC_REQUEST 0x20
-#define LOC_SUCCESS 0x21
-#define LOC_FAILURE 0x22
-
-#define TERMINATE 0xff
-
-#define MSG_LENGTH 0
-#define MSG_TYPE 4
-#define MSG_START 8
-#define MSG_REG_HOST MSG_START
-#define MSG_REG_PORT (MSG_REG_HOST + MAX_HOST_LENGTH)
-#define MSG_REG_NAME (MSG_REG_PORT + MAX_PORT_LENGTH)
-#define MSG_REG_ARGS (MSG_REG_NAME + MAX_NAME_LENGTH)
-
 #define BUF_SIZE 256
-#define SELECT_WAIT_SECS 0
-#define SELECT_WAIT_MICROSECS 500000
 
 typedef std::vector<unsigned char> char_v;
 typedef std::queue<char_v> host_v;
@@ -61,16 +33,30 @@ struct HandlerArgs {
     int soc;
     proc_m & procMap;
     pthread_mutex_t * procMapMutex;
-    bool & terminate;
+    bool & term;
     pthread_mutex_t * terminateMutex;
+
     HandlerArgs(int soc, proc_m & procMap, pthread_mutex_t * procMapMutex,
             bool & terminate, pthread_mutex_t * terminateMutex):
         id(0),
         soc(soc),
         procMap(procMap),
         procMapMutex(procMapMutex),
-        terminate(terminate),
+        term(terminate),
         terminateMutex(terminateMutex) {}
+
+    bool hasTerminated() {
+        pthread_mutex_lock(terminateMutex);
+        bool _terminate = term;
+        pthread_mutex_unlock(terminateMutex);
+        return _terminate;
+    }
+
+    void terminate() {
+        pthread_mutex_lock(terminateMutex);
+        term = true;
+        pthread_mutex_unlock(terminateMutex);
+    }
 };
 
 
@@ -93,11 +79,7 @@ void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & mes
     pthread_mutex_unlock(procMapMutex);
 
     unsigned char messageBuf[MSG_START + 1] = {0};
-    unsigned int length = 1;
-    unsigned int status = REGISTER_SUCCESS;
-    memcpy(messageBuf + MSG_LENGTH, &length, sizeof(unsigned int));
-    memcpy(messageBuf + MSG_TYPE, &status, sizeof(unsigned int));
-    send(soc, messageBuf, MSG_START + 1, 0);
+    sendPacket(soc, messageBuf, 1, REGISTER_SUCCESS);
 }
 
 void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & message, int soc) {
@@ -117,15 +99,7 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & messa
     }
     pthread_mutex_unlock(procMapMutex);
 
-    memcpy(messageBuf + MSG_LENGTH, &length, sizeof(unsigned int));
-    memcpy(messageBuf + MSG_TYPE, &status, sizeof(unsigned int));
-    send(soc, messageBuf, MSG_START + length, 0);
-}
-
-void terminate(bool & terminate, pthread_mutex_t * terminateMutex) {
-    pthread_mutex_lock(terminateMutex);
-    terminate = true;
-    pthread_mutex_unlock(terminateMutex);
+    sendPacket(soc, messageBuf, length, status);
 }
 
 void process(unsigned char type, char_v & message, HandlerArgs * args) {
@@ -137,7 +111,7 @@ void process(unsigned char type, char_v & message, HandlerArgs * args) {
             getProcLoc(args->procMap, args->procMapMutex, message, args->soc);
             break;
         } case TERMINATE: {
-            terminate(args->terminate, args->terminateMutex);
+            args->terminate();
             break;
         }
     }
@@ -150,32 +124,17 @@ void * handler(void * a) {
     unsigned int type = 0;
     unsigned int length = 0;
 
-    while (1) {
-        pthread_mutex_lock(args->terminateMutex);
-        bool _terminate = args->terminate;
-        pthread_mutex_unlock(args->terminateMutex);
-        if (_terminate) break;
-
-		fd_set fds;
-		FD_ZERO(&fds);
-		FD_SET(args->soc, &fds);
-		timeval tv = {SELECT_WAIT_SECS, SELECT_WAIT_MICROSECS};
-
-		int retval = select(args->soc + 1, &fds, NULL, NULL, &tv);
-		if (retval < 0) {
-			perror("Select:");
-			continue;
-		} else if (retval == 0) {
-			continue;
-		}
-
-        int readSize = recv(args->soc, buf, BUF_SIZE, 0);
-        if (!readSize) break;
+    while (!args->hasTerminated()) {
+        int readSize = selectAndRead(args->soc, buf, BUF_SIZE);
+        if (readSize < 0) {
+            continue;
+        } else if (readSize == 0) {
+            break;
+        }
 
         int offset = 0;
         if (readSize >= MSG_START && !type && !length) {
-            memcpy(&length, buf + MSG_LENGTH, sizeof(unsigned int));
-            memcpy(&type, buf + MSG_TYPE, sizeof(unsigned int));
+            getPacketHeader(buf, length, type);
             offset = MSG_START;
         }
         for (unsigned char * _buf = buf + offset; _buf - buf < readSize; _buf++) {
@@ -188,6 +147,7 @@ void * handler(void * a) {
             type = 0;
         }
     }
+    close(args->soc);
 }
 
 int main() {
@@ -207,42 +167,24 @@ int main() {
     pthread_mutex_init(&terminateMutex, NULL);
 
     std::vector<HandlerArgs *> threads;
+    HandlerArgs mainArgs(soc, procMap, &procMapMutex, terminate, &terminateMutex);
 
-    while (1) {
-        pthread_mutex_lock(&terminateMutex);
-        bool _terminate = terminate;
-        pthread_mutex_unlock(&terminateMutex);
-        if (_terminate) break;
-
-		fd_set fds;
-		FD_ZERO(&fds);
-		FD_SET(soc, &fds);
-		timeval tv = {SELECT_WAIT_SECS, SELECT_WAIT_MICROSECS};
-
-		int retval = select(soc + 1, &fds, NULL, NULL, &tv);
-		if (retval < 0) {
-			perror("Select:");
-			continue;
-		} else if (retval == 0) {
-			continue;
-		}
-
-        int connSoc = accept(soc, NULL, NULL);
-		if (connSoc < 0) {
-			perror("Accept:");
-			continue;
-		}
+    while (!mainArgs.hasTerminated()) {
+        int connSoc = selectAndAccept(soc);
+        if (connSoc < 0) {
+            continue;
+        }
 
         HandlerArgs * args = new HandlerArgs(connSoc, procMap, &procMapMutex,
                 terminate, &terminateMutex);
 
-		if (pthread_create(&args->id, NULL, handler, args) != 0) {
-			std::cerr << "Failed to create thread" << std::endl;
-			close(args->id);
-			delete args;
-		} else {
-			threads.push_back(args);
-		}
+        if (pthread_create(&args->id, NULL, handler, args) != 0) {
+            std::cerr << "Failed to create thread" << std::endl;
+            close(args->id);
+            delete args;
+        } else {
+            threads.push_back(args);
+        }
     }
 
     for (std::vector<HandlerArgs *>::iterator it = threads.begin(); it != threads.end(); it++) {

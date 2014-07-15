@@ -4,6 +4,7 @@
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -11,6 +12,8 @@
 #include "socket.h"
 
 #define SOCKET_QUEUE 32
+#define SELECT_WAIT_SECS 0
+#define SELECT_WAIT_MICROSECS 500000
 
 int getBinderSocket() {
     int soc = socket(AF_INET, SOCK_STREAM, 6);
@@ -51,4 +54,40 @@ int getBinderSocket() {
     std::cout << "SERVER_PORT " << ntohs(sin.sin_port) << std::endl;
 
     return soc;
+}
+
+int myselect(int soc) {
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(soc, &fds);
+    timeval tv = {SELECT_WAIT_SECS, SELECT_WAIT_MICROSECS};
+
+    int retval = select(soc + 1, &fds, NULL, NULL, &tv);
+    if (retval < 0) {
+        perror("Select:");
+    }
+    return retval;
+}
+
+int selectAndAccept(int soc) {
+    int ret = myselect(soc);
+    if (ret > 0) {
+        ret = accept(soc, NULL, NULL);
+        if (ret < 0) {
+            perror("Accept:");
+        }
+    }
+    return -1;
+}
+
+int selectAndRead(int soc, unsigned char * buf, unsigned int size) {
+    int ret = myselect(soc);
+    if (ret > 0) {
+        ret = recv(soc, buf, size, 0);
+        if (ret < 0) {
+            perror("Read:");
+        }
+        return ret;
+    }
+    return -1;
 }
