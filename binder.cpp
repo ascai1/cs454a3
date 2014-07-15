@@ -67,7 +67,7 @@ void maskArgs(char_v & message, unsigned int offset) {
 }
 
 void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & message, int soc) {
-    maskArgs(message, BINDER_MSG_REG_ARGS);
+    maskArgs(message, SERVER_REG_MSG_ARGS);
 
     char_v key;
     char_v val;
@@ -86,14 +86,14 @@ void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & mes
     procMap[key].push(val);
     pthread_mutex_unlock(procMapMutex);
 
-    unsigned char messageBuf[MSG_START + 1] = {0};
+    unsigned char messageBuf[MSG_HEADER_LEN + 1] = {0};
     sendPacket(soc, messageBuf, 1, REGISTER_SUCCESS);
 }
 
 void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & message, int soc) {
-    maskArgs(message, BINDER_MSG_LOC_ARGS);
+    maskArgs(message, CLIENT_LOC_MSG_ARGS);
 
-    unsigned char messageBuf[MSG_START + MAX_HOST_LENGTH + MAX_NAME_LENGTH] = {0};
+    unsigned char messageBuf[MSG_HEADER_LEN + BINDER_LOC_MSG_LEN] = {0};
     unsigned int status = LOC_FAILURE;
     unsigned int length = 1;
 
@@ -101,7 +101,7 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & messa
     proc_m::iterator proc = procMap.find(message);
     if (proc != procMap.end()) {
         status = LOC_SUCCESS;
-        length = MAX_HOST_LENGTH + MAX_NAME_LENGTH;
+        length = BINDER_LOC_MSG_LEN;
         char_v & host = proc->second.front();
         std::copy(host.begin(), host.end(), messageBuf + 1);
         proc->second.push(host);
@@ -142,10 +142,11 @@ void * handler(void * a) {
             break;
         }
 
+        // This code assumes that the header will always arrive intact
         int offset = 0;
-        if (readSize >= MSG_START && !type && !length) {
+        if (readSize >= MSG_HEADER_LEN && !type && !length) {
             getPacketHeader(buf, length, type);
-            offset = MSG_START;
+            offset = MSG_HEADER_LEN;
         }
         for (unsigned char * _buf = buf + offset; _buf - buf < readSize; _buf++) {
             message.push_back(*_buf);
@@ -155,6 +156,7 @@ void * handler(void * a) {
             message.clear();
             if (type == TERMINATE) break;
             type = 0;
+            length = 0;
         }
     }
     close(args->soc);
@@ -185,8 +187,7 @@ int main() {
             continue;
         }
 
-        HandlerArgs * args = new HandlerArgs(connSoc, procMap, &procMapMutex,
-                terminate, &terminateMutex);
+        HandlerArgs * args = new HandlerArgs(connSoc, procMap, &procMapMutex, terminate, &terminateMutex);
 
         if (pthread_create(&args->id, NULL, handler, args) != 0) {
             std::cerr << "Failed to create thread" << std::endl;

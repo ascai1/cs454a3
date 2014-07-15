@@ -34,5 +34,5 @@ void getPacketHeader(unsigned char * packet, unsigned int & length, unsigned int
 
 int sendPacket(int soc, unsigned char * packet, unsigned int length, unsigned int type) {
     setPacketHeader(packet, length, type);
-    return send(soc, packet, MSG_START + length, 0);
+    return send(soc, packet, MSG_HEADER_LEN + length, 0);
 }
