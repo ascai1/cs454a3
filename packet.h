@@ -1,6 +1,19 @@
 #ifndef PACKET_H
 #define PACKET_H
 
+#define ARG_LENGTH 4
+
+#define ARG_CHAR (1 << 16)
+#define ARG_SHORT (2 << 16)
+#define ARG_INT (3 << 16)
+#define ARG_LONG (4 << 16)
+#define ARG_DOUBLE (5 << 16)
+#define ARG_FLOAT (6 << 16)
+
+#define ARG_INPUT (1 << 31)
+#define ARG_OUTPUT (1 << 30)
+
+
 #define MSG_LENGTH 0
 #define MSG_TYPE 4
 #define MSG_START 8
@@ -26,6 +39,7 @@
 
 #define BINDER_MSG_LOC_NAME MSG_START
 #define BINDER_MSG_LOC_ARGS (BINDER_MSG_LOC_NAME + MAX_NAME_LENGTH)
+
 
 void setPacketLength(unsigned char * packet, unsigned int length);
 void setPacketType(unsigned char * packet, unsigned int type);

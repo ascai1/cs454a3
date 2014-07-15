@@ -59,8 +59,16 @@ struct HandlerArgs {
     }
 };
 
+void maskArgs(char_v & message, unsigned int offset) {
+    for (; offset + ARG_LENGTH <= message.size(); offset += ARG_LENGTH) {
+        message[offset + 2] = 0;
+        message[offset + 3] = 0;
+    }
+}
 
 void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & message, int soc) {
+    maskArgs(message, BINDER_MSG_REG_ARGS);
+
     char_v key;
     char_v val;
 
@@ -83,6 +91,8 @@ void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & mes
 }
 
 void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & message, int soc) {
+    maskArgs(message, BINDER_MSG_LOC_ARGS);
+
     unsigned char messageBuf[MSG_START + MAX_HOST_LENGTH + MAX_NAME_LENGTH] = {0};
     unsigned int status = LOC_FAILURE;
     unsigned int length = 1;
