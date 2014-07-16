@@ -36,3 +36,11 @@ int sendPacket(int soc, unsigned char * packet, unsigned int length, unsigned in
     setPacketHeader(packet, length, type);
     return send(soc, packet, MSG_HEADER_LEN + length, 0);
 }
+
+void clearPacket(unsigned char * packet) {
+    memset(packet, 0, sizeof(packet));
+}
+
+void setPacketData(unsigned char * packet, unsigned int offset, const void * data, int length) {
+    memcpy(packet + MSG_HEADER_LEN + offset, data, length);
+}

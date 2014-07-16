@@ -15,6 +15,41 @@
 #define SELECT_WAIT_SECS 0
 #define SELECT_WAIT_MICROSECS 500000
 
+int getClientSocket() {
+    int soc = socket(AF_INET, SOCK_STREAM, 6);
+    if (soc < 0) {
+        perror("Socket: ");
+        return -1;
+    }
+
+    addrinfo hints;
+    addrinfo * addr;
+    memset(&hints, 0, sizeof(addrinfo));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = 6; // TCP
+    int gai = getaddrinfo(std::getenv("BINDER_ADDRESS"), std::getenv("BINDER_PORT"), &hints, &addr) ;
+    if (gai != 0) {
+        std::cerr << "GetAddrInfo failed, please check your environment variables BINDER_ADDRESS and BINDER_PORT" << std::endl;
+        std::cerr << gai_strerror(gai) << std::endl;
+        close(soc);
+        return -1;
+    }
+
+    addrinfo * _addr;
+    for (_addr = addr; _addr; _addr = _addr->ai_next) {
+        if (connect(soc, _addr->ai_addr, _addr->ai_addrlen) >= 0) break;
+    }
+    if (!_addr)
+        perror("Connect: ");
+        close(soc);
+        return -1;
+    }
+    freeaddrinfo(addr);
+
+    return soc;
+}
+
 int getBinderSocket() {
     int soc = socket(AF_INET, SOCK_STREAM, 6);
     if (soc < 0) {
@@ -83,11 +118,15 @@ int selectAndAccept(int soc) {
 int selectAndRead(int soc, unsigned char * buf, unsigned int size) {
     int ret = myselect(soc);
     if (ret > 0) {
-        ret = recv(soc, buf, size, 0);
-        if (ret < 0) {
-            perror("Read:");
-        }
-        return ret;
+        return myread(soc, buf, size);
     }
     return -1;
+}
+
+int myread(int soc, unsigned char * buf, unsigned int size) {
+    int ret = recv(soc, buf, size, 0);
+    if (ret < 0) {
+        perror("Read:");
+    }
+    return ret;
 }

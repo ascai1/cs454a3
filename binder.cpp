@@ -112,6 +112,7 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & messa
     sendPacket(soc, messageBuf, length, status);
 }
 
+// What if send is unsuccessful due to other side closing? have to return a code
 void process(unsigned char type, char_v & message, HandlerArgs * args) {
     switch (type) {
         case REGISTER: {

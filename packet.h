@@ -13,6 +13,8 @@
 #define ARG_INPUT (1 << 31)
 #define ARG_OUTPUT (1 << 30)
 
+#define ARG_ARR_LEN_MASK 0x0000ffff
+
 
 #define MSG_LENGTH 0
 #define MSG_TYPE 4
@@ -44,6 +46,9 @@
 #define BINDER_LOC_MSG_PORT (BINDER_LOC_MSG_HOST + MAX_HOST_LENGTH)
 #define BINDER_LOC_MSG_LEN (BINDER_LOC_MSG_PORT + MAX_PORT_LENGTH)
 
+#define CLIENT_EXEC_MSG_NAME 0
+#define CLIENT_EXEC_MSG_ARGS (CLIENT_LOC_MSG_NAME + MAX_NAME_LENGTH)
+
 void setPacketLength(unsigned char * packet, unsigned int length);
 void setPacketType(unsigned char * packet, unsigned int type);
 void setPacketHeader(unsigned char * packet, unsigned int length, unsigned int type);
@@ -57,4 +62,10 @@ void getPacketHeader(unsigned char * packet, unsigned int & length, unsigned int
  */
 int sendPacket(int soc, unsigned char * packet, unsigned int length, unsigned int type);
 
+void clearPacket(unsigned char * packet);
+void setPacketData(unsigned char * packet, unsigned int offset, const void * data, int length);
+void getPacketData(const unsigned char * packet, unsigned int offset, void * data, int length);
+
+unsigned int getTotalArgLength(int * argTypes);
+void setPacketArgData(unsigned char * packet, unsigned int offset, int * argTypes, const void ** args);
 #endif

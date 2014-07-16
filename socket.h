@@ -25,4 +25,9 @@ int selectAndAccept(int soc);
  */
 int selectAndRead(int soc, unsigned char * buf, unsigned int size);
 
+/**
+ * Basically a wrapper for recv
+ */
+int myread(int soc, unsigned char * buf, unsigned int size);
+
 #endif
