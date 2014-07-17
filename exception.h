@@ -10,6 +10,8 @@
 #define SERVER_UNAVAILABLE -7
 #define BAD_SEND_SERVER -8
 #define BAD_RECV_SERVER -9
+#define NO_HOST_NAME -10
+#define NO_PORT_NUMBER -11
 
 class RpcException: public std::exception {
     int error;

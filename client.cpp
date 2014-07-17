@@ -3,7 +3,6 @@
 #include "socket.h"
 #include "exception.h"
 
-
 int rpcCall(char * name, int * argTypes, void ** args) {
     int argc = 0;
     for (int * at = argTypes; *at; at++) {

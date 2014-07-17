@@ -33,7 +33,7 @@
 #define LOC_FAILURE 0x22
 
 #define TERMINATE 0xff
-
+	
 #define SERVER_REG_MSG_HOST 0
 #define SERVER_REG_MSG_PORT (SERVER_REG_MSG_HOST + MAX_HOST_LENGTH)
 #define SERVER_REG_MSG_NAME (SERVER_REG_MSG_PORT + MAX_PORT_LENGTH)
@@ -68,4 +68,8 @@ void getPacketData(const unsigned char * packet, unsigned int offset, void * dat
 
 unsigned int getTotalArgLength(int * argTypes);
 void setPacketArgData(unsigned char * packet, unsigned int offset, int * argTypes, const void ** args);
+void getPacketArgData(unsigned char * packet, unsigned int offset, int * argTypes, void ** args);
+
+void** getPacketArgPointers(unsigned char * packet, unsigned int offset, int * argTypes);
+
 #endif

@@ -9,7 +9,8 @@ std::string errorStrings[] = {
     "Could not create socket to server",
     "Server is unavailable",
     "Could not send packet to server",
-    "Could not receive packet from server"
+    "Could not receive packet from server",
+    "No hostname found."
 };
 unsigned int lastError = 9;
 
