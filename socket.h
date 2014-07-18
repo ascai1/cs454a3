@@ -1,11 +1,12 @@
 #ifndef SOCKET_H
 #define SOCKET_H
 
+#include <netinet/in.h>
 
 int getClientBinderSocket();
-int getClientServerSocket();
+int getClientServerSocket(const char * name, const char * port);
 
-int getServerBinderSocket();
+int getServerBinderSocket(sockaddr_in & addr);
 int getServerClientSocket();
 
 int getBinderSocket();
@@ -23,12 +24,12 @@ int getHost(char* hostname);
 int getSockName(int soc, sockaddr_in* addr);
 
 /**
- * If any data arrives at the "numsocs" sockets in array "socs" in the next 0.5 seconds,
+ * If any data arrives at the "numsocs" sockets in array "socs" in the next "tv" seconds,
  *   return the first available socket FD
  * If no data arrived, return 0
  * If something broke, print error and return -1
  */
-int myselect(int * socs, int numsocs);
+int myselect(int * socs, int numsocs, timeval * tv);
 
 /**
  * If any connection requests arrive at socket "soc" in the next 0.5 seconds, 

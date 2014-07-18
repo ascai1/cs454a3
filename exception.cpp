@@ -28,12 +28,12 @@ int lastError = -22;
 
 RpcException::RpcException(int error): error(error) {}
 
-std::string RpcException::getException() {
+std::string RpcException::getException() const {
     if (error >= 0) return "Success";
     if (error < lastError) return "Unknown error";
     return errorStrings[-error - 1];
 }
 
-int RpcException::getErrorCode() {
+int RpcException::getErrorCode() const {
     return error;
 }

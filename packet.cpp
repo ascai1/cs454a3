@@ -60,6 +60,7 @@ unsigned int getTotalArgLength(int * argTypes){
         unsigned int argLength = ((unsigned int)(*at) & ARG_ARR_LEN_MASK);
         unsigned int dataType = (unsigned int)(*at) & ARG_TYPE_ID_MASK;
 
+        unsigned int argTypeCount;
         if(dataType == ARG_CHAR){
             argTypeCount += sizeof(char) * argLength;    
         }
@@ -78,24 +79,25 @@ unsigned int getTotalArgLength(int * argTypes){
         else if(dataType == ARG_FLOAT){
             argTypeCount += sizeof(float) * argLength;
         }
+        // throw exception
     }  
 
     return totalArgLength;
 }
 
-void setPacketArgData(unsigned char * packet, unsigned int offset, int * argTypes, const void ** args, bool setInput){
+void setPacketArgData(unsigned char * packet, unsigned int offset, const int * argTypes, const void * const* args, unsigned int iomask){
     int newOffset = offset + MSG_HEADER_LEN;
 
     int argc = 0;
-    for(int* at = argTypes; *at; at++){
+    for(const int* at = argTypes; *at; at++){
         argc++;
     }
 
-    unsigned int dataSize;
+    unsigned int dataLength;
     for(int i = 0; i < argc; i++){
         unsigned int argLength = ((unsigned int)(argTypes[i]) & ARG_ARR_LEN_MASK);
         unsigned int dataType = (unsigned int)(argTypes[i]) & ARG_TYPE_ID_MASK;
-        void* arg = args[i];
+        const void* arg = args[i];
 
         if(dataType == ARG_CHAR){
             dataLength = sizeof(char);
@@ -116,15 +118,7 @@ void setPacketArgData(unsigned char * packet, unsigned int offset, int * argType
             dataLength = sizeof(float);
         }  
 
-        unsigned int ioType;
-        if(setInput){
-            ioType = (unsigned int)(argTypes[i]) & ARG_INPUT;
-        }
-        else{
-            ioType = (unsigned int)(argTypes[i]) & ARG_OUTPUT;
-        }
-
-        if(ioType){
+        if((unsigned int)(argTypes[i]) & iomask){
             memcpy(packet + newOffset, arg, argLength * dataLength);   
         }
         
@@ -132,12 +126,11 @@ void setPacketArgData(unsigned char * packet, unsigned int offset, int * argType
     }
 }
 
-void getPacketArgData(unsigned char * packet, unsigned int offset, const int * argTypes, void ** args, bool fetchInput){
+void getPacketArgData(unsigned char * packet, unsigned int offset, const int * argTypes, void ** args, unsigned int iomask){
     int newOffset = offset + MSG_HEADER_LEN;
-    int* packetArgs = (packet + offset);
 
     int argc = 0;
-    for(int* at = argTypes; *at; at++){
+    for(const int* at = argTypes; *at; at++){
         argc++;
     }
 
@@ -166,15 +159,7 @@ void getPacketArgData(unsigned char * packet, unsigned int offset, const int * a
             dataLength = sizeof(float);
         }  
 
-        unsigned int ioType;
-        if(fetchInput){
-            ioType = (unsigned int)(argTypes[i]) & ARG_INPUT;
-        }
-        else{
-            ioType = (unsigned int)(argTypes[i]) & ARG_OUTPUT;
-        }
-
-        if(ioType){
+        if((unsigned int)(argTypes[i]) & iomask){
             memcpy(arg, packet + newOffset, argLength * dataLength);    
         }
 
@@ -184,7 +169,6 @@ void getPacketArgData(unsigned char * packet, unsigned int offset, const int * a
 
 void** getPacketArgPointers(unsigned char * packet, unsigned int offset, int * argTypes){
     int newOffset = offset + MSG_HEADER_LEN;
-    int* packetArgs = (packet + offset);
 
     int argc = 0;
     for(int* at = argTypes; *at; at++){
@@ -221,6 +205,6 @@ void** getPacketArgPointers(unsigned char * packet, unsigned int offset, int * a
         newOffset += dataLength * argLength;
     } 
 
-    return totalArgLength;
+    return argPointers;
 
 }

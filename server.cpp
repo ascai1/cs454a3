@@ -1,3 +1,13 @@
+#include <algorithm>
+#include <iostream>
+#include <map>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <netinet/in.h>
+#include <string.h>
+
 #include "rpc.h"
 #include "packet.h"
 #include "socket.h"
@@ -7,8 +17,6 @@
 
 using namespace std;
 
-typedef int (*skeleton)(int*, void**);
-
 int bindSocket = 0;
 int clientSocket = 0;
 sockaddr_in binderAddr;
@@ -17,17 +25,17 @@ struct Key{
     string name;
     vector<unsigned int> argTypes;
 
-    bool operator< (const Key& otherkey){
-        if(name != otherkey.name){
-            return name < otherkey.name;
+    bool operator< (const Key& otherKey) const {
+        if(name != otherKey.name){
+            return name < otherKey.name;
         }
 
         if (argTypes.size() != otherKey.argTypes.size()) {
             return argTypes.size() < otherKey.argTypes.size();
         }
        
-        pair<vector<unsigned int>::iterator, vector<unsigned int>::iterator> mis
-            = mismatch(argTypes.begin(), argTypes.end(), otherkey.argTypes.begin());
+        pair<vector<unsigned int>::const_iterator, vector<unsigned int>::const_iterator> mis
+            = mismatch(argTypes.begin(), argTypes.end(), otherKey.argTypes.begin());
         return *(mis.first) < *(mis.second);
     }
 
@@ -35,7 +43,7 @@ struct Key{
     name(name)
     {
         for(int* at = argTypes; *at; at++){
-            argTypes.push_back(*at);
+            this->argTypes.push_back(*at);
         }
     }
 };
@@ -78,7 +86,7 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
         }
 
         clearPacket(packet);
-        setPacketData(packet, SERVER_REG_MSG_NAME, name, std::min(MAX_NAME_LENGTH, strlen(name)));
+        setPacketData(packet, SERVER_REG_MSG_NAME, name, std::min(MAX_NAME_LENGTH, (int)strlen(name)));
         for(int i = 0; i < argc; i++){
             setPacketData(packet, SERVER_REG_MSG_ARGS + sizeof(int) * i, argTypes + i, sizeof(int));
         }
@@ -114,18 +122,19 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
         Key key(name, argTypes);
         serverSkeletonMap[key] = f;
     }
-    catch{
+    catch (const RpcException e){
         std::cerr << "rpcRegister: " << e.getException() << std::endl;
-        if (registerPacket) delete[] packet;
+        if (packet) delete[] packet;
        // if (bindSocket) close(bindSocket);
         return e.getErrorCode();        
     }
 
+    if (packet) delete[] packet;
     return 0;
 }
 
 int rpcExecute(){
-    if (socketSkeletonMap.empty()) {
+    if (serverSkeletonMap.empty()) {
         return NO_METHODS_REGISTERED;
     }
     if (bindSocket != 0 || clientSocket != 0){
@@ -200,12 +209,12 @@ int rpcExecute(){
             }
 
             unsigned int argsLength = getTotalArgLength(argTypes);
-            unsigned int argsOffset = packet + MSG_HEADER_LEN + CLIENT_EXEC_MSG_ARGS + sizeof(int) * argTypeCount;
+            unsigned int argsOffset = CLIENT_EXEC_MSG_ARGS + sizeof(int) * argTypeCount;
             void** args = getPacketArgPointers(packet, argsOffset, argTypes);
  
             int result = (it->second)(argTypes, args);
             if(result == 0){
-                setPacketArgData(packet, argsOffset, argTypes, args);
+                setPacketArgData(packet, argsOffset, argTypes, args, ARG_OUTPUT);
                 if (sendPacket(readSocket, packet, sizeof(packet), EXECUTE_SUCCESS) <= 0) {
                     throw RpcException(SERVER_SEND_FAILED);
                 }
@@ -222,7 +231,7 @@ int rpcExecute(){
 
             int err = e.getErrorCode();
             if (readSocket && (e.getErrorCode() != SERVER_SEND_FAILED)) {
-                char failPacket[MSG_HEADER_LEN + SERVER_FAIL_MSG_LEN] = {0};
+                unsigned char failPacket[MSG_HEADER_LEN + SERVER_FAIL_MSG_LEN] = {0};
                 setPacketData(failPacket, SERVER_FAIL_MSG_CAUSE, &err, sizeof(int));
                 sendPacket(readSocket, failPacket, SERVER_FAIL_MSG_LEN, EXECUTE_FAILURE);
             }

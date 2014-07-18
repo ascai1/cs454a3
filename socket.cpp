@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -10,6 +11,7 @@
 #include <unistd.h>
 
 #include "socket.h"
+#include "packet.h"
 
 #define SOCKET_QUEUE 32
 #define SELECT_WAIT_SECS 0
@@ -39,11 +41,11 @@ int getActiveSocket(const char * name, const char * port, sockaddr_in & binderAd
     addrinfo * _addr;
     for (_addr = addr; _addr; _addr = _addr->ai_next) {
         if (connect(soc, _addr->ai_addr, _addr->ai_addrlen) >= 0) {
-            binderAddr = *(addr->ai_addr);
+            binderAddr = *(sockaddr_in *)(addr->ai_addr);
             break;
         }
     }
-    if (!_addr)
+    if (!_addr) {
         perror("Connect: ");
         close(soc);
         return -1;
@@ -78,10 +80,10 @@ int getPassiveSocket() {
 
 int getClientBinderSocket() {
     sockaddr_in addr;
-    return getActiveSocket(std::getenv("BINDER_ADDRESS"), std::getenv("BINDER_PORT"), addr);
+    return getActiveSocket(getenv("BINDER_ADDRESS"), getenv("BINDER_PORT"), addr);
 }
 
-int getClientServerSocket(char * name, char * port) {
+int getClientServerSocket(const char * name, const char * port) {
     sockaddr_in addr;
     return getActiveSocket(name, port, addr);
 }
@@ -98,6 +100,7 @@ int getBinderSocket() {
         return -1;
     }
 
+    sockaddr_in addr;
     if (getSockName(soc, &addr) < 0){
         close(soc);
         return -1;
@@ -110,7 +113,7 @@ int getBinderSocket() {
 }
 
 int getServerBinderSocket(sockaddr_in & addr) {
-    return getActiveSocket(std::getenv("BINDER_ADDRESS"), std::getenv("BINDER_PORT"), addr);
+    return getActiveSocket(getenv("BINDER_ADDRESS"), getenv("BINDER_PORT"), addr);
 }
 
 int getServerClientSocket() {

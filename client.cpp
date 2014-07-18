@@ -1,3 +1,8 @@
+#include <algorithm>
+#include <iostream>
+#include <string.h>
+#include <unistd.h>
+
 #include "rpc.h"
 #include "packet.h"
 #include "socket.h"
@@ -25,13 +30,13 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             throw RpcException(SIG_TOO_LONG);
         }
 
-        soc = getClientBindSocket(); 
+        soc = getClientBinderSocket(); 
         if (soc < 0) {
             throw RpcException(BAD_BINDER_SOCK);
         }
 
         clearPacket(packet);
-        setPacketData(packet, CLIENT_LOC_MSG_NAME, name, std::min(MAX_NAME_LENGTH, strlen(name)));
+        setPacketData(packet, CLIENT_LOC_MSG_NAME, name, std::min(MAX_NAME_LENGTH, (int)strlen(name)));
         for (int i = 0; i < argc; i++) {
             setPacketData(packet, CLIENT_LOC_MSG_ARGS + sizeof(int) * i, argTypes + i, sizeof(int));
         }
@@ -53,8 +58,8 @@ int rpcCall(char * name, int * argTypes, void ** args) {
 
         close(soc);
 
-        unsigned char name[MAX_HOST_LENGTH + 1] = {0};
-        unsigned char port[MAX_PORT_LENGTH + 1] = {0};
+        char name[MAX_HOST_LENGTH + 1] = {0};
+        char port[MAX_PORT_LENGTH + 1] = {0};
         getPacketData(response, BINDER_LOC_MSG_HOST, name, MAX_HOST_LENGTH);
         getPacketData(response, BINDER_LOC_MSG_PORT, name, MAX_PORT_LENGTH);
         soc = getClientServerSocket(name, port);
@@ -63,7 +68,7 @@ int rpcCall(char * name, int * argTypes, void ** args) {
         }
 
         if (CLIENT_LOC_MSG_NAME != CLIENT_EXEC_MSG_NAME) {
-            setPacketData(packet, CLIENT_EXEC_MSG_NAME, name, std::min(MAX_NAME_LENGTH, strlen(name)));
+            setPacketData(packet, CLIENT_EXEC_MSG_NAME, name, std::min(MAX_NAME_LENGTH, (int)strlen(name)));
         }
         if (CLIENT_LOC_MSG_ARGS != CLIENT_EXEC_MSG_ARGS) {
             for (int i = 0; i < argc; i++) {
@@ -71,7 +76,7 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             }
         }
 
-        setPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc, argTypes, args);
+        setPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc, argTypes, args, ARG_INPUT);
 
         sendBytes = sendPacket(soc, packet, serverPacketLength, EXECUTE);
         if (!sendBytes) {
@@ -87,7 +92,7 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             throw RpcException(BAD_RECV_BIND);
         }
 
-        getPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc, argTypes, args);
+        getPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc, argTypes, args, ARG_OUTPUT);
         delete[] packet;
         close(soc);
         return 0;
@@ -100,9 +105,9 @@ int rpcCall(char * name, int * argTypes, void ** args) {
 }
 
 int rpcTerminate() {
-    int soc = getClientBindSoc(); 
+    int soc = getClientBinderSocket(); 
     if (soc < 0) {
-        return BAD_BINDER_SOC;
+        return BAD_BINDER_SOCK;
     }
     unsigned char packet[MSG_HEADER_LEN];
     sendPacket(soc, packet, 0, TERMINATE);
