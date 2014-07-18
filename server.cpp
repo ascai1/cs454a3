@@ -2,6 +2,7 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <sstream>
 #include <utility>
 #include <vector>
 
@@ -12,6 +13,7 @@
 #include "packet.h"
 #include "socket.h"
 #include "exception.h"
+#include "keyval.h"
 
 #define BUF_SIZE 256
 
@@ -21,40 +23,13 @@ int bindSocket = 0;
 int clientSocket = 0;
 sockaddr_in binderAddr;
 
-struct Key{
-    string name;
-    vector<unsigned int> argTypes;
-
-    bool operator< (const Key& otherKey) const {
-        if(name != otherKey.name){
-            return name < otherKey.name;
-        }
-
-        if (argTypes.size() != otherKey.argTypes.size()) {
-            return argTypes.size() < otherKey.argTypes.size();
-        }
-       
-        pair<vector<unsigned int>::const_iterator, vector<unsigned int>::const_iterator> mis
-            = mismatch(argTypes.begin(), argTypes.end(), otherKey.argTypes.begin());
-        return *(mis.first) < *(mis.second);
-    }
-
-    Key(char* name, int* argTypes):
-    name(name)
-    {
-        for(int* at = argTypes; *at; at++){
-            this->argTypes.push_back(*at);
-        }
-    }
-};
-
 std::map<Key, skeleton> serverSkeletonMap;
 
 int rpcInit(){
     bindSocket = getServerBinderSocket(binderAddr);
     clientSocket = getServerClientSocket();
 
-    if(bindSocket == 0 && clientSocket == 0){
+    if(bindSocket > 0 && clientSocket > 0){
         return 0;
     }
     else{
@@ -70,7 +45,7 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
             throw RpcException(NAME_TOO_LONG);
         }
 
-        if(bindSocket != 0 || clientSocket != 0){
+        if(bindSocket <= 0 || clientSocket <= 0){
             throw RpcException(SOCKETS_NOT_INITIALIZED);
         }
 
@@ -79,7 +54,7 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
             argc++;
         }  
 
-        int registerPacketLength = SERVER_REG_MSG_ARGS + sizeof(int) * argc;
+        int registerPacketLength = SERVER_REG_MSG_ARGS + sizeof(int) * (argc + 1);
         packet = new unsigned char[MSG_HEADER_LEN + registerPacketLength];
         if(!packet){
             throw RpcException(SIG_TOO_LONG);
@@ -91,7 +66,7 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
             setPacketData(packet, SERVER_REG_MSG_ARGS + sizeof(int) * i, argTypes + i, sizeof(int));
         }
 
-        char hostname[MAX_HOST_LENGTH];
+        char hostname[MAX_HOST_LENGTH] = {0};
         if(getHost(hostname) < 0){
             throw RpcException(NO_HOST_NAME);
         }
@@ -101,8 +76,11 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
             throw RpcException(NO_PORT_NUMBER);
         }
 
+        std::stringstream port;
+        port << ntohs(addr.sin_port);
+
         setPacketData(packet, SERVER_REG_MSG_HOST, hostname, MAX_HOST_LENGTH);
-        setPacketData(packet, SERVER_REG_MSG_PORT, &addr.sin_port, sizeof(unsigned short));
+        setPacketData(packet, SERVER_REG_MSG_PORT, port.str().c_str(), MAX_PORT_LENGTH);
 
         int sendBytes = sendPacket(bindSocket, packet, registerPacketLength, REGISTER);
         if (!sendBytes) {
@@ -118,6 +96,12 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
         } else if (readBytes < sizeof(response)) {
             throw RpcException(BAD_RECV_BIND);
         }        
+
+        unsigned int type, length;
+        getPacketHeader(response, length, type);
+        if (type != REGISTER_SUCCESS) {
+            throw RpcException(REGISTRATION_FAILED);
+        }
    
         Key key(name, argTypes);
         serverSkeletonMap[key] = f;
@@ -137,7 +121,7 @@ int rpcExecute(){
     if (serverSkeletonMap.empty()) {
         return NO_METHODS_REGISTERED;
     }
-    if (bindSocket != 0 || clientSocket != 0){
+    if (bindSocket <= 0 || clientSocket <= 0){
         return SOCKETS_NOT_INITIALIZED;
     }
 

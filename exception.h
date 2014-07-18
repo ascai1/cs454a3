@@ -23,6 +23,7 @@
 #define AUTHENTICATION_FAILED -20
 #define METHOD_NOT_FOUND -21
 #define SERVER_SEND_FAILED -22
+#define REGISTRATION_FAILED -23
 
 #include <string>
 

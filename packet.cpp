@@ -1,3 +1,4 @@
+#include <iostream>
 #include "packet.h"
 #include <string.h>
 #include <sys/socket.h>
@@ -50,7 +51,7 @@ void setPacketData(unsigned char * packet, unsigned int offset, const void * dat
 }
 
 void getPacketData(const unsigned char * packet, unsigned int offset, void * data, int length){
-    memcpy(data, packet + offset, length);
+    memcpy(data, packet + MSG_HEADER_LEN + offset, length);
 }
 
 unsigned int getTotalArgLength(int * argTypes){

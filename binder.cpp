@@ -12,21 +12,11 @@
 
 #include "packet.h"
 #include "socket.h"
+#include "keyval.h"
 
 #define BUF_SIZE 256
 
-typedef std::vector<unsigned char> char_v;
-typedef std::queue<char_v> host_v;
-
-struct procMapComp {
-    bool operator()(const char_v & a, const char_v & b) {
-        if (a.size() != b.size()) return a.size() < b.size();
-        std::pair<char_v::const_iterator, char_v::const_iterator> mismatch = std::mismatch(a.begin(), a.end(), b.begin());
-        return *(mismatch.first) < *(mismatch.second);
-    }
-};
-
-typedef std::map<char_v, host_v, procMapComp> proc_m;
+typedef std::map<Key, std::queue<ServerID> > proc_m;
 
 struct HandlerArgs {
     pthread_t id;
@@ -59,51 +49,57 @@ struct HandlerArgs {
     }
 };
 
-void maskArgs(char_v & message, unsigned int offset) {
-    for (; offset + ARG_LENGTH <= message.size(); offset += ARG_LENGTH) {
-        message[offset + 2] = 0;
-        message[offset + 3] = 0;
+void maskArgs(unsigned char * packet, unsigned int offset) {
+    unsigned int * argTypes = (unsigned int *)(packet + offset);
+    for (unsigned int * at = argTypes; *at; ++at) {
+        unsigned int isArray = *at & ARG_ARR_LEN_MASK;
+        *at = (*at & ~ARG_ARR_LEN_MASK) | (isArray ? 1 : 0);
     }
 }
 
-void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & message, int soc) {
-    maskArgs(message, SERVER_REG_MSG_ARGS);
+void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char * packet, int soc) {
+    maskArgs(packet, SERVER_REG_MSG_ARGS);
 
-    char_v key;
-    char_v val;
+    char name[MAX_NAME_LENGTH + 1] = {0};
+    getPacketData(packet, SERVER_REG_MSG_NAME, name, MAX_NAME_LENGTH);
+    int * argTypes = (int *)(packet + MSG_HEADER_LEN + CLIENT_LOC_MSG_ARGS);
+    Key key(name, argTypes);
 
-    char_v::const_iterator begin = message.begin();
-    char_v::const_iterator end = message.end();
-    for (char_v::const_iterator it = begin; it != end; it++) {
-        if (it - begin >= MAX_HOST_LENGTH + MAX_PORT_LENGTH) {
-            val.push_back(*it);
-        } else {
-            key.push_back(*it);
-        }
-    }
+    char host[MAX_HOST_LENGTH + 1] = {0};
+    getPacketData(packet, SERVER_REG_MSG_HOST, host, MAX_HOST_LENGTH);
+    char port[MAX_PORT_LENGTH + 1] = {0};
+    getPacketData(packet, SERVER_REG_MSG_PORT, port, MAX_PORT_LENGTH);
+    ServerID id(host, port);
 
     pthread_mutex_lock(procMapMutex);
-    procMap[key].push(val);
+    procMap[key].push(id);
     pthread_mutex_unlock(procMapMutex);
 
-    unsigned char messageBuf[MSG_HEADER_LEN + 1] = {0};
-    sendPacket(soc, messageBuf, 1, REGISTER_SUCCESS);
+    // Return fail if already registered
+    unsigned char messageBuf[MSG_HEADER_LEN] = {0};
+    sendPacket(soc, messageBuf, 0, REGISTER_SUCCESS);
 }
 
-void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & message, int soc) {
-    maskArgs(message, CLIENT_LOC_MSG_ARGS);
+void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char * packet, int soc) {
+    maskArgs(packet, CLIENT_LOC_MSG_ARGS);
 
     unsigned char messageBuf[MSG_HEADER_LEN + BINDER_LOC_MSG_LEN] = {0};
     unsigned int status = LOC_FAILURE;
     unsigned int length = 1;
 
+    char name[MAX_NAME_LENGTH + 1] = {0};
+    getPacketData(packet, CLIENT_LOC_MSG_NAME, name, MAX_NAME_LENGTH);
+    int * argTypes = (int *)(packet + MSG_HEADER_LEN + CLIENT_LOC_MSG_ARGS);
+    Key key(name, argTypes);
+
     pthread_mutex_lock(procMapMutex);
-    proc_m::iterator proc = procMap.find(message);
+    proc_m::iterator proc = procMap.find(key);
     if (proc != procMap.end()) {
         status = LOC_SUCCESS;
         length = BINDER_LOC_MSG_LEN;
-        char_v & host = proc->second.front();
-        std::copy(host.begin(), host.end(), messageBuf + 1);
+        ServerID & host = proc->second.front();
+        setPacketData(messageBuf, BINDER_LOC_MSG_HOST, host.getName(), MAX_HOST_LENGTH);
+        setPacketData(messageBuf, BINDER_LOC_MSG_PORT, host.getPort(), MAX_PORT_LENGTH);
         proc->second.push(host);
         proc->second.pop();
     }
@@ -113,13 +109,16 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, char_v & messa
 }
 
 // What if send is unsuccessful due to other side closing? have to return a code
-void process(unsigned char type, char_v & message, HandlerArgs * args) {
+void process(unsigned char * packet, HandlerArgs * args) {
+    unsigned int length, type;
+    getPacketHeader(packet, length, type);
+
     switch (type) {
         case REGISTER: {
-            registerProc(args->procMap, args->procMapMutex, message, args->soc);
+            registerProc(args->procMap, args->procMapMutex, packet, args->soc);
             break;
         } case LOC_REQUEST: {
-            getProcLoc(args->procMap, args->procMapMutex, message, args->soc);
+            getProcLoc(args->procMap, args->procMapMutex, packet, args->soc);
             break;
         } case TERMINATE: {
             args->terminate();
@@ -130,35 +129,37 @@ void process(unsigned char type, char_v & message, HandlerArgs * args) {
 
 void * handler(void * a) {
     HandlerArgs * args = (HandlerArgs *)a;
-    char_v message;
-    unsigned char buf[BUF_SIZE];
-    unsigned int type = 0;
-    unsigned int length = 0;
 
     while (!args->hasTerminated()) {
-        int readSize = selectAndRead(args->soc, buf, BUF_SIZE);
-        if (readSize < 0) {
-            continue;
-        } else if (readSize == 0) {
+        unsigned char header[MSG_HEADER_LEN];
+        unsigned int type = 0;
+        unsigned int length = 0;
+        unsigned char * packet = NULL;
+
+        int readSize = selectAndRead(args->soc, header, MSG_HEADER_LEN);
+        if (readSize == 0) {
             break;
+        } else if (readSize != MSG_HEADER_LEN) {
+            continue;
         }
 
-        // This code assumes that the header will always arrive intact
-        int offset = 0;
-        if (readSize >= MSG_HEADER_LEN && !type && !length) {
-            getPacketHeader(buf, length, type);
-            offset = MSG_HEADER_LEN;
+        getPacketHeader(header, length, type);
+        packet = new unsigned char[MSG_HEADER_LEN + length];
+        if (!packet) {
+            continue;
         }
-        for (unsigned char * _buf = buf + offset; _buf - buf < readSize; _buf++) {
-            message.push_back(*_buf);
+        setPacketHeader(packet, length, type);
+
+        for (unsigned int offset = 0; readSize > 0 && offset < length; offset += readSize) {
+            readSize = myread(args->soc, packet + MSG_HEADER_LEN + offset, length - offset);
         }
-        if (message.size() >= length) {
-            process(type, message, args);
-            message.clear();
-            if (type == TERMINATE) break;
-            type = 0;
-            length = 0;
+        if (readSize <= 0) {
+            continue;
         }
+
+        process(packet, args);
+        if (type == TERMINATE) break;
+        delete[] packet;
     }
     close(args->soc);
 }

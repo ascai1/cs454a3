@@ -18,7 +18,7 @@
 #define SELECT_WAIT_MICROSECS 500000
 
 int getActiveSocket(const char * name, const char * port, sockaddr_in & binderAddr){
-    int soc = socket(AF_INET, SOCK_STREAM, 6);
+    int soc = socket(AF_INET, SOCK_STREAM, 0);
     if(soc < 0){
         perror("Socket: ");
         return -1;
@@ -39,9 +39,10 @@ int getActiveSocket(const char * name, const char * port, sockaddr_in & binderAd
     }
 
     addrinfo * _addr;
+
     for (_addr = addr; _addr; _addr = _addr->ai_next) {
         if (connect(soc, _addr->ai_addr, _addr->ai_addrlen) >= 0) {
-            binderAddr = *(sockaddr_in *)(addr->ai_addr);
+            binderAddr = *(sockaddr_in *)(_addr->ai_addr);
             break;
         }
     }
@@ -56,7 +57,7 @@ int getActiveSocket(const char * name, const char * port, sockaddr_in & binderAd
 }
 
 int getPassiveSocket() {
-    int soc = socket(AF_INET, SOCK_STREAM, 6);
+    int soc = socket(AF_INET, SOCK_STREAM, 0);
     if (soc < 0) {
         perror("Socket: ");
         return -1;
@@ -106,8 +107,8 @@ int getBinderSocket() {
         return -1;
     }   
 
-    std::cout << "SERVER_ADDRESS " << hostname << std::endl;
-    std::cout << "SERVER_PORT " << ntohs(addr.sin_port) << std::endl;
+    std::cout << "BINDER_ADDRESS " << hostname << std::endl;
+    std::cout << "BINDER_PORT " << ntohs(addr.sin_port) << std::endl;
 
     return soc;
 }
@@ -131,7 +132,7 @@ int getHost(char* hostname){
 
 int getSockName(int soc, sockaddr_in* addr){
     socklen_t addr_len = sizeof(sockaddr_in);
-    if (getsockname(soc, (sockaddr *)(&addr), &addr_len) < 0) {
+    if (getsockname(soc, (sockaddr *)addr, &addr_len) < 0) {
         perror("GetSockName:");
         return -1;
     }

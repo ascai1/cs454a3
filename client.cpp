@@ -22,8 +22,8 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             argc++;
         }
     
-        int binderPacketLength = CLIENT_LOC_MSG_ARGS + sizeof(int) * argc;
-        int serverPacketLength = CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc + getTotalArgLength(argTypes);
+        int binderPacketLength = CLIENT_LOC_MSG_ARGS + sizeof(int) * (argc + 1);
+        int serverPacketLength = CLIENT_EXEC_MSG_ARGS + sizeof(int) * (argc + 1) + getTotalArgLength(argTypes);
 
         packet = new unsigned char[MSG_HEADER_LEN + std::max(binderPacketLength, serverPacketLength)];
         if (!packet) {
