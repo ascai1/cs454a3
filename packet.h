@@ -14,7 +14,7 @@
 #define ARG_OUTPUT (1 << 30)
 
 #define ARG_ARR_LEN_MASK 0x0000ffff
-
+#define ARG_TYPE_ID_MASK 0x00ff0000
 
 #define MSG_LENGTH 0
 #define MSG_TYPE 4
