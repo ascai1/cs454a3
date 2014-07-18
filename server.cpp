@@ -5,7 +5,7 @@
 #include <sstream>
 #include <utility>
 #include <vector>
-
+#include <unistd.h>
 #include <netinet/in.h>
 #include <string.h>
 
