@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
 
 struct Key {
     std::string name;
@@ -18,6 +19,8 @@ struct Key {
 
     Key(char* name, int* argTypes);
     Key(const Key& otherKey);
+
+    void print() const;
 };
 
 struct ServerID {

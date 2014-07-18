@@ -2,6 +2,14 @@
 #include <utility>
 #include "keyval.h"
 
+void Key::print() const{
+    std::cerr << "Name: " << name << std::endl;
+
+    for(int i = 0; i < argTypes.size(); i++){
+        std::cerr << "ArgType " << i << ": " << argTypes[i] << std::endl;
+    }
+}
+
 bool Key::operator< (const Key& otherKey) const {
     if(name != otherKey.name){
         return name < otherKey.name;
@@ -35,6 +43,7 @@ bool Key::operator!= (const Key& otherKey) const { return !(*this == otherKey); 
 Key::Key(char* name, int* argTypes): name(name)
 {
     for(int* at = argTypes; *at; at++){
+        std::cerr << "ArgType: " << *at << std::endl;
         this->argTypes.push_back(*at);
     }
 }

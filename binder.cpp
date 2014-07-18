@@ -17,6 +17,8 @@
 
 #define BUF_SIZE 256
 
+using namespace std;
+
 typedef std::map<Key, std::queue<ServerID> > proc_m;
 
 struct HandlerArgs {
@@ -51,10 +53,17 @@ struct HandlerArgs {
 };
 
 void maskArgs(unsigned char * packet, unsigned int offset) {
-    unsigned int * argTypes = (unsigned int *)(packet + offset);
-    for (unsigned int * at = argTypes; *at; ++at) {
-        unsigned int isArray = *at & ARG_ARR_LEN_MASK;
-        *at = (*at & ~ARG_ARR_LEN_MASK) | (isArray ? 1 : 0);
+    while (true) {
+        unsigned int argType;
+        getPacketData(packet, offset, &argType, sizeof(unsigned int));
+        if (!argType)
+            break;
+
+        unsigned int isArray = argType & ARG_ARR_LEN_MASK;
+        argType = (argType & ~ARG_ARR_LEN_MASK) | (isArray ? 1 : 0);
+
+        setPacketData(packet, offset, &argType, sizeof(unsigned int));
+        offset += sizeof(unsigned int);
     }
 }
 
@@ -63,7 +72,7 @@ void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned cha
 
     char name[MAX_NAME_LENGTH + 1] = {0};
     getPacketData(packet, SERVER_REG_MSG_NAME, name, MAX_NAME_LENGTH);
-    int * argTypes = (int *)(packet + MSG_HEADER_LEN + CLIENT_LOC_MSG_ARGS);
+    int * argTypes = (int *)(packet + MSG_HEADER_LEN + SERVER_REG_MSG_ARGS);
     Key key(name, argTypes);
 
     char host[MAX_HOST_LENGTH + 1] = {0};
@@ -86,7 +95,7 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char 
 
     unsigned char messageBuf[MSG_HEADER_LEN + BINDER_LOC_MSG_LEN] = {0};
     unsigned int status = LOC_FAILURE;
-    unsigned int length = 1;
+    unsigned int length = 0;
 
     char name[MAX_NAME_LENGTH + 1] = {0};
     getPacketData(packet, CLIENT_LOC_MSG_NAME, name, MAX_NAME_LENGTH);
@@ -95,6 +104,11 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char 
 
     pthread_mutex_lock(procMapMutex);
     proc_m::iterator proc = procMap.find(key);
+
+    for(proc_m::iterator mapIt = procMap.begin(); mapIt != procMap.end(); mapIt++){
+        mapIt->first.print();
+    }
+
     if (proc != procMap.end()) {
         status = LOC_SUCCESS;
         length = BINDER_LOC_MSG_LEN;

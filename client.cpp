@@ -8,6 +8,8 @@
 #include "socket.h"
 #include "exception.h"
 
+using namespace std;
+
 int rpcCall(char * name, int * argTypes, void ** args) {
     int soc = 0;
     int result = -1;
@@ -42,6 +44,8 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             setPacketData(packet, CLIENT_LOC_MSG_ARGS + sizeof(int) * i, argTypes + i, sizeof(int));
         }
 
+        cerr << "sock: " << soc << endl;
+
         int sendBytes = sendPacket(soc, packet, binderPacketLength, LOC_REQUEST);
         if (!sendBytes) {
             throw RpcException(BINDER_UNAVAILABLE);
@@ -54,6 +58,7 @@ int rpcCall(char * name, int * argTypes, void ** args) {
         if (!readBytes) {
             throw RpcException(BINDER_UNAVAILABLE);
         } else if (readBytes < sizeof(response)) {
+            cerr << "readBytes: " << readBytes << endl;
             throw RpcException(BAD_RECV_BIND);
         }
 
