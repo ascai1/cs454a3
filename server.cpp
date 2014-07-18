@@ -178,6 +178,7 @@ int rpcExecute(){
 
             char methodName[MAX_NAME_LENGTH + 1] = {0};
             getPacketData(packet, CLIENT_EXEC_MSG_NAME, methodName, MAX_NAME_LENGTH);
+            setPacketData(packet, CLIENT_EXEC_MSG_NAME, NULL, MAX_NAME_LENGTH);
 
             int* argTypes = (int*)(packet + MSG_HEADER_LEN + CLIENT_EXEC_MSG_ARGS);   
 
@@ -197,6 +198,7 @@ int rpcExecute(){
             void** args = getPacketArgPointers(packet, argsOffset, argTypes);
  
             int result = (it->second)(argTypes, args);
+            setPacketData(packet, SERVER_EXEC_MSG_RESULT, &result, sizeof(int));
             if(result == 0){
                 setPacketArgData(packet, argsOffset, argTypes, args, ARG_OUTPUT);
                 if (sendPacket(readSocket, packet, sizeof(packet), EXECUTE_SUCCESS) <= 0) {
@@ -204,9 +206,7 @@ int rpcExecute(){
                 }
             }
             else{
-                setPacketData(packet, SERVER_FAIL_MSG_CAUSE, NULL, sizeof(int));
-                setPacketData(packet, SERVER_FAIL_MSG_RESULT, &result, sizeof(int));
-                if(sendPacket(readSocket, packet, SERVER_FAIL_MSG_LEN, EXECUTE_FAILURE) <= 0) {
+                if(sendPacket(readSocket, packet, SERVER_EXEC_MSG_LEN, EXECUTE_FAILURE) <= 0) {
                     throw RpcException(SERVER_SEND_FAILED);
                 }
             }
@@ -215,9 +215,9 @@ int rpcExecute(){
 
             int err = e.getErrorCode();
             if (readSocket && (e.getErrorCode() != SERVER_SEND_FAILED)) {
-                unsigned char failPacket[MSG_HEADER_LEN + SERVER_FAIL_MSG_LEN] = {0};
-                setPacketData(failPacket, SERVER_FAIL_MSG_CAUSE, &err, sizeof(int));
-                sendPacket(readSocket, failPacket, SERVER_FAIL_MSG_LEN, EXECUTE_FAILURE);
+                unsigned char failPacket[MSG_HEADER_LEN + SERVER_EXEC_MSG_LEN] = {0};
+                setPacketData(failPacket, SERVER_EXEC_MSG_CAUSE, &err, sizeof(int));
+                sendPacket(readSocket, failPacket, SERVER_EXEC_MSG_LEN, EXECUTE_FAILURE);
             }
         }
 

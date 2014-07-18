@@ -18,7 +18,7 @@
 #define SELECT_WAIT_MICROSECS 500000
 
 int getActiveSocket(const char * name, const char * port, sockaddr_in & binderAddr){
-    int soc = socket(AF_INET, SOCK_STREAM, 0);
+    int soc = socket(AF_INET, SOCK_STREAM, 6);
     if(soc < 0){
         perror("Socket: ");
         return -1;
@@ -57,7 +57,7 @@ int getActiveSocket(const char * name, const char * port, sockaddr_in & binderAd
 }
 
 int getPassiveSocket() {
-    int soc = socket(AF_INET, SOCK_STREAM, 0);
+    int soc = socket(AF_INET, SOCK_STREAM, 6);
     if (soc < 0) {
         perror("Socket: ");
         return -1;

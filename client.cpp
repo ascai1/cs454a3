@@ -10,6 +10,7 @@
 
 int rpcCall(char * name, int * argTypes, void ** args) {
     int soc = 0;
+    int result = -1;
     unsigned char * packet = NULL;
 
     try {
@@ -67,16 +68,15 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             throw RpcException(BAD_SERVER_SOCK);
         }
 
-        if (CLIENT_LOC_MSG_NAME != CLIENT_EXEC_MSG_NAME) {
+        if (CLIENT_LOC_MSG_NAME != CLIENT_EXEC_MSG_NAME || CLIENT_LOC_MSG_ARGS != CLIENT_EXEC_MSG_ARGS) {
+            clearPacket(packet);
             setPacketData(packet, CLIENT_EXEC_MSG_NAME, name, std::min(MAX_NAME_LENGTH, (int)strlen(name)));
-        }
-        if (CLIENT_LOC_MSG_ARGS != CLIENT_EXEC_MSG_ARGS) {
             for (int i = 0; i < argc; i++) {
                 setPacketData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * i, argTypes + i, sizeof(int));
             }
         }
 
-        setPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc, argTypes, args, ARG_INPUT);
+        setPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * (argc + 1), argTypes, args, ARG_INPUT);
 
         sendBytes = sendPacket(soc, packet, serverPacketLength, EXECUTE);
         if (!sendBytes) {
@@ -85,23 +85,31 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             throw RpcException(BAD_SEND_SERVER);
         }
         
-        readBytes = myread(soc, packet, sizeof(response));
+        readBytes = myread(soc, packet, sizeof(packet));
         if (!readBytes) {
             throw RpcException(BINDER_UNAVAILABLE);
         } else if (readBytes < serverPacketLength) {
             throw RpcException(BAD_RECV_BIND);
         }
 
-        getPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc, argTypes, args, ARG_OUTPUT);
-        delete[] packet;
-        close(soc);
-        return 0;
+        int failCause = 0;
+        getPacketData(packet, SERVER_EXEC_MSG_CAUSE, &failCause, sizeof(int));
+        if (failCause) {
+            throw RpcException(failCause);
+        }
+
+        getPacketData(packet, SERVER_EXEC_MSG_RESULT, &result, sizeof(int));
+        if (!result) {
+            getPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc, argTypes, args, ARG_OUTPUT);
+        }
     } catch (const RpcException e) {
         std::cerr << "rpcCall: " << e.getException() << std::endl;
-        if (packet) delete[] packet;
-        if (soc) close(soc);
-        return e.getErrorCode();
+        result = e.getErrorCode();
     }
+
+    if (packet) delete[] packet;
+    if (soc) close(soc);
+    return result;
 }
 
 int rpcTerminate() {

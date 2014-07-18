@@ -53,9 +53,10 @@
 #define CLIENT_EXEC_MSG_NAME 0
 #define CLIENT_EXEC_MSG_ARGS (CLIENT_LOC_MSG_NAME + MAX_NAME_LENGTH)
 
-#define SERVER_FAIL_MSG_CAUSE 0
-#define SERVER_FAIL_MSG_RESULT 4
-#define SERVER_FAIL_MSG_LEN 8
+#define SERVER_EXEC_MSG_CAUSE 0
+#define SERVER_EXEC_MSG_RESULT 4
+#define SERVER_EXEC_MSG_LEN 8
+#define SERVER_EXEC_MSG_ARGS CLIENT_EXEC_MSG_ARGS
 
 void setPacketLength(unsigned char * packet, unsigned int length);
 void setPacketType(unsigned char * packet, unsigned int type);
