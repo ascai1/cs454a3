@@ -29,6 +29,9 @@ int rpcInit(){
     bindSocket = getServerBinderSocket(binderAddr);
     clientSocket = getServerClientSocket();
 
+    std::cerr << "bindsocket: " << bindSocket << std::endl;
+    std::cerr << "clientSocket: " << clientSocket << std::endl;
+
     if(bindSocket > 0 && clientSocket > 0){
         return 0;
     }
@@ -151,6 +154,9 @@ int rpcExecute(){
             }
 
             int readBytes = myread(readSocket, header, sizeof(header));        
+          
+            std::cerr << "readSocket: " << readSocket << std::endl;
+            std::cerr << "readbytes: " << readBytes << std::endl;
             if (readBytes >= MSG_HEADER_LEN) {
                 getPacketHeader(header, length, type);
                 packet = new unsigned char[MSG_HEADER_LEN + length];

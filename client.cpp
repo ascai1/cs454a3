@@ -112,7 +112,7 @@ int rpcCall(char * name, int * argTypes, void ** args) {
         result = e.getErrorCode();
     }
 
-  //  if (packet) delete[] packet;
+    if (packet) delete[] packet;
     if (soc) close(soc);
     return result;
 }
