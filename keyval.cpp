@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <utility>
+
+#include "packet.h"
 #include "keyval.h"
 
 void Key::print() const{
@@ -20,31 +22,40 @@ bool Key::operator< (const Key& otherKey) const {
     }
    
     std::pair<types_v::const_iterator, types_v::const_iterator> mis
-        = mismatch(argTypes.begin(), argTypes.end(), otherKey.argTypes.begin());
-    return *(mis.first) < *(mis.second);
+        = std::mismatch(argTypes.begin(), argTypes.end(), otherKey.argTypes.begin());
+    
+   return mis.first != argTypes.end() && *(mis.first) < *(mis.second);
 }
 
 bool Key::operator> (const Key& otherKey) const { return otherKey < *this; }
 bool Key::operator<= (const Key& otherKey) const { return !(otherKey < *this); }
 bool Key::operator>= (const Key& otherKey) const { return !(*this < otherKey); }
 bool Key::operator== (const Key& otherKey) const {
+    bool equals = true;
     if(name != otherKey.name){
-        return false;
+        equals = false;
+    }  
+    else if (argTypes.size() != otherKey.argTypes.size()) {
+        equals = false;
+    }
+    else{
+        equals = std::equal(argTypes.begin(), argTypes.end(), otherKey.argTypes.begin());
     }
 
-    if (argTypes.size() != otherKey.argTypes.size()) {
-        return false;
-    }
-   
-    return std::equal(argTypes.begin(), argTypes.end(), otherKey.argTypes.begin());
+    std::cerr << "name: " << this->name << " " << "otherkey: " << otherKey.name << " : " << equals << std::endl;
+
+    return equals;
 }
 bool Key::operator!= (const Key& otherKey) const { return !(*this == otherKey); }
 
 Key::Key(char* name, int* argTypes): name(name)
 {
     for(int* at = argTypes; *at; at++){
-        std::cerr << "ArgType: " << *at << std::endl;
-        this->argTypes.push_back(*at);
+        unsigned int argType = *at;
+        unsigned int isArray = argType & ARG_ARR_LEN_MASK;
+        argType = (argType & ~ARG_ARR_LEN_MASK) | (isArray ? 1 : 0);
+
+        this->argTypes.push_back(argType);
     }
 }
 

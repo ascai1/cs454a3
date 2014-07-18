@@ -72,7 +72,7 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
         }
 
         sockaddr_in addr;
-        if(getSockName(bindSocket, &addr)){
+        if(getSockName(clientSocket, &addr)){
             throw RpcException(NO_PORT_NUMBER);
         }
 
@@ -109,8 +109,7 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
     catch (const RpcException e){
         std::cerr << "rpcRegister: " << e.getException() << std::endl;
         if (packet) delete[] packet;
-       // if (bindSocket) close(bindSocket);
-        return e.getErrorCode();        
+            return e.getErrorCode();        
     }
 
     if (packet) delete[] packet;
@@ -141,6 +140,7 @@ int rpcExecute(){
             int socs[2] = {bindSocket, clientSocket};
             selectedSocket = myselect(socs, 2, NULL);
             readSocket = selectedSocket;
+
             if (selectedSocket == clientSocket) {
                 readSocket = myaccept(clientSocket);
                 if (readSocket < 0) {
@@ -163,8 +163,9 @@ int rpcExecute(){
             }
 
             for (unsigned int offset = 0; readBytes > 0 && offset < length; offset += readBytes) {
-                readBytes = myread(clientSocket, packet + MSG_HEADER_LEN + offset, length - offset);
+                readBytes = myread(readSocket, packet + MSG_HEADER_LEN + offset, length - offset);
             }
+    
             if (readBytes <= 0) {
                 throw RpcException(SERVER_READ_FAILED);
             }
@@ -175,6 +176,12 @@ int rpcExecute(){
                 }
                 throw RpcException(AUTHENTICATION_FAILED);
             }
+
+            std::cerr << "length: " << length << std::endl;
+            for(unsigned char* a = packet + MSG_HEADER_LEN; (a - packet) < (MSG_HEADER_LEN + length); a++){
+                std::cerr << "a: " << (int) *a << std::endl;
+            }
+
 
             char methodName[MAX_NAME_LENGTH + 1] = {0};
             getPacketData(packet, CLIENT_EXEC_MSG_NAME, methodName, MAX_NAME_LENGTH);
@@ -188,20 +195,24 @@ int rpcExecute(){
             }
 
             Key key(methodName, argTypes);
+
             map<Key, skeleton>::iterator it = serverSkeletonMap.find(key);
             if (it == serverSkeletonMap.end()) {
                 throw RpcException(METHOD_NOT_FOUND);
             }
 
             unsigned int argsLength = getTotalArgLength(argTypes);
-            unsigned int argsOffset = CLIENT_EXEC_MSG_ARGS + sizeof(int) * argTypeCount;
+            unsigned int argsOffset = CLIENT_EXEC_MSG_ARGS + sizeof(int) * (argTypeCount + 1);
             void** args = getPacketArgPointers(packet, argsOffset, argTypes);
  
             int result = (it->second)(argTypes, args);
+
+            std::cerr << result << std::endl;
+
             setPacketData(packet, SERVER_EXEC_MSG_RESULT, &result, sizeof(int));
             if(result == 0){
-                setPacketArgData(packet, argsOffset, argTypes, args, ARG_OUTPUT);
-                if (sendPacket(readSocket, packet, sizeof(packet), EXECUTE_SUCCESS) <= 0) {
+                setPacketArgData(packet, argsOffset, argTypes, args, ARG_OUTPUT);            
+                if (sendPacket(readSocket, packet, length, EXECUTE_SUCCESS) <= 0) {
                     throw RpcException(SERVER_SEND_FAILED);
                 }
             }

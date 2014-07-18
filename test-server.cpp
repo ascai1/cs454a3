@@ -6,8 +6,12 @@
 int sum(int argc, int* argv) {
     int result = 0;
     for (int i = 0; i < argc; i++) {
+        std::cout << argv[i] << std::endl;
         result += argv[i];
     }
+
+    std::cout << "testserver: sum: result: " << result << std::endl;
+
     return result;
 }
 

@@ -52,24 +52,7 @@ struct HandlerArgs {
     }
 };
 
-void maskArgs(unsigned char * packet, unsigned int offset) {
-    while (true) {
-        unsigned int argType;
-        getPacketData(packet, offset, &argType, sizeof(unsigned int));
-        if (!argType)
-            break;
-
-        unsigned int isArray = argType & ARG_ARR_LEN_MASK;
-        argType = (argType & ~ARG_ARR_LEN_MASK) | (isArray ? 1 : 0);
-
-        setPacketData(packet, offset, &argType, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-    }
-}
-
 void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char * packet, int soc) {
-    maskArgs(packet, SERVER_REG_MSG_ARGS);
-
     char name[MAX_NAME_LENGTH + 1] = {0};
     getPacketData(packet, SERVER_REG_MSG_NAME, name, MAX_NAME_LENGTH);
     int * argTypes = (int *)(packet + MSG_HEADER_LEN + SERVER_REG_MSG_ARGS);
@@ -91,8 +74,6 @@ void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned cha
 }
 
 void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char * packet, int soc) {
-    maskArgs(packet, CLIENT_LOC_MSG_ARGS);
-
     unsigned char messageBuf[MSG_HEADER_LEN + BINDER_LOC_MSG_LEN] = {0};
     unsigned int status = LOC_FAILURE;
     unsigned int length = 0;
@@ -113,6 +94,9 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char 
         status = LOC_SUCCESS;
         length = BINDER_LOC_MSG_LEN;
         ServerID & host = proc->second.front();
+
+        std::cerr << "binder: " << host.getPort() << std::endl;
+
         setPacketData(messageBuf, BINDER_LOC_MSG_HOST, host.getName(), MAX_HOST_LENGTH);
         setPacketData(messageBuf, BINDER_LOC_MSG_PORT, host.getPort(), MAX_PORT_LENGTH);
         proc->second.push(host);

@@ -59,26 +59,28 @@ unsigned int getTotalArgLength(int * argTypes){
 
     for (int* at = argTypes; *at; at++) {
         unsigned int argLength = ((unsigned int)(*at) & ARG_ARR_LEN_MASK);
+        if(argLength == 0){
+            argLength = 1;
+        }
         unsigned int dataType = (unsigned int)(*at) & ARG_TYPE_ID_MASK;
 
-        unsigned int argTypeCount;
         if(dataType == ARG_CHAR){
-            argTypeCount += sizeof(char) * argLength;    
+            totalArgLength += sizeof(char) * argLength;    
         }
         else if(dataType == ARG_SHORT){
-            argTypeCount += sizeof(short) * argLength;
+            totalArgLength += sizeof(short) * argLength;
         }
         else if(dataType == ARG_INT){
-            argTypeCount += sizeof(int) * argLength;
+            totalArgLength += sizeof(int) * argLength;
         }
         else if(dataType == ARG_LONG){
-            argTypeCount += sizeof(long) * argLength;
+            totalArgLength += sizeof(long) * argLength;
         }
         else if(dataType == ARG_DOUBLE){
-            argTypeCount += sizeof(double) * argLength;
+            totalArgLength += sizeof(double) * argLength;
         }
         else if(dataType == ARG_FLOAT){
-            argTypeCount += sizeof(float) * argLength;
+            totalArgLength += sizeof(float) * argLength;
         }
         // throw exception
     }  
@@ -97,8 +99,14 @@ void setPacketArgData(unsigned char * packet, unsigned int offset, const int * a
     unsigned int dataLength;
     for(int i = 0; i < argc; i++){
         unsigned int argLength = ((unsigned int)(argTypes[i]) & ARG_ARR_LEN_MASK);
+        if(argLength == 0){
+            argLength = 1;
+        }
         unsigned int dataType = (unsigned int)(argTypes[i]) & ARG_TYPE_ID_MASK;
         const void* arg = args[i];
+
+        std::cerr << "arglen: " << argLength << std::endl;
+        std::cerr << "dataType: " << dataType << std::endl;
 
         if(dataType == ARG_CHAR){
             dataLength = sizeof(char);
@@ -120,6 +128,8 @@ void setPacketArgData(unsigned char * packet, unsigned int offset, const int * a
         }  
 
         if((unsigned int)(argTypes[i]) & iomask){
+            std::cerr << "setarg: " << *(int*)arg << std::endl;
+
             memcpy(packet + newOffset, arg, argLength * dataLength);   
         }
         
@@ -138,6 +148,9 @@ void getPacketArgData(unsigned char * packet, unsigned int offset, const int * a
     unsigned int dataLength = 0;
     for(int i = 0; i < argc; i++){
         unsigned int argLength = ((unsigned int)(argTypes[i]) & ARG_ARR_LEN_MASK);
+        if(argLength == 0){
+            argLength = 1;
+        }
         unsigned int dataType = (unsigned int)(argTypes[i]) & ARG_TYPE_ID_MASK;
         void* arg = args[i];
 
@@ -161,6 +174,9 @@ void getPacketArgData(unsigned char * packet, unsigned int offset, const int * a
         }  
 
         if((unsigned int)(argTypes[i]) & iomask){
+            std::cerr << "getarg: " << *(int*)arg << std::endl;
+
+
             memcpy(arg, packet + newOffset, argLength * dataLength);    
         }
 
@@ -180,7 +196,13 @@ void** getPacketArgPointers(unsigned char * packet, unsigned int offset, int * a
 
     for(int i = 0; i < argc; i++){
         unsigned int argLength = ((unsigned int)(argTypes[i]) & ARG_ARR_LEN_MASK);
+        if(argLength == 0){
+            argLength = 1;
+        }
         unsigned int dataType = (unsigned int)(argTypes[i]) & ARG_TYPE_ID_MASK;
+
+        std::cerr << "getpktargtr: arglen: " << argLength << std::endl;
+        std::cerr << "getpktargtr: dataType: " << dataType << std::endl;
 
         unsigned int dataLength;
         if(dataType == ARG_CHAR){
@@ -204,8 +226,10 @@ void** getPacketArgPointers(unsigned char * packet, unsigned int offset, int * a
 
         argPointers[i] = (packet + newOffset);
         newOffset += dataLength * argLength;
+
+        std::cerr << "argptr:i " << *(int *)argPointers[i] << " newoffset: " << newOffset << std::endl;
     } 
 
-    return argPointers;
 
+    return argPointers;
 }

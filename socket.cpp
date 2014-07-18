@@ -85,6 +85,8 @@ int getClientBinderSocket() {
 }
 
 int getClientServerSocket(const char * name, const char * port) {
+    std::cerr << "name: " << name  << "port: " << port << std::endl;
+
     sockaddr_in addr;
     return getActiveSocket(name, port, addr);
 }
@@ -118,7 +120,27 @@ int getServerBinderSocket(sockaddr_in & addr) {
 }
 
 int getServerClientSocket() {
-    return getPassiveSocket();
+    int soc = getPassiveSocket();
+    if (soc < 0) {
+        return soc;
+    }
+
+    char hostname[128];
+    if(getHost(hostname) < 0){
+        close(soc);
+        return -1;
+    }
+
+    sockaddr_in addr;
+    if (getSockName(soc, &addr) < 0){
+        close(soc);
+        return -1;
+    }   
+
+    std::cout << "BINDER_ADDRESS " << hostname << std::endl;
+    std::cout << "BINDER_PORT " << ntohs(addr.sin_port) << std::endl;
+
+    return soc;
 }
 
 int getHost(char* hostname){
@@ -196,6 +218,10 @@ int myaccept(int soc) {
 }
 
 int myread(int soc, unsigned char * buf, unsigned int size) {
+//    std::cerr << "myread: " << soc << std::endl;
+  //  std::cerr << "myread: " << buf << std::endl;
+    //std::cerr << "myread; " << size << std::endl;
+
     int ret = recv(soc, buf, size, 0);
     if (ret < 0) {
         perror("Read:");
