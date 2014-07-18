@@ -14,7 +14,7 @@ int main() {
     };
     int * args[] = {&result, nums};
     int ret = rpcCall(name, argTypes, (void **)args);
-    std::cout << "rpcCall returned " << ret << ", final result is " << result;
+    std::cout << "rpcCall returned " << ret << ", final result is " << result << std::endl;
     rpcTerminate();
     return 0;
 }
