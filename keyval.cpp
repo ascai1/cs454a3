@@ -62,8 +62,25 @@ Key::Key(char* name, int* argTypes): name(name)
 Key::Key(const Key& otherKey): name(otherKey.name), argTypes(otherKey.argTypes) {}
 
 
+bool ServerID::operator< (const ServerID & otherID) const {
+    return name < otherID.name || port < otherID.port;
+}
+bool ServerID::operator> (const ServerID & otherID) const { return otherID < *this; }
+bool ServerID::operator<= (const ServerID & otherID) const { return !(otherID < *this); }
+bool ServerID::operator>= (const ServerID & otherID) const { return !(*this < otherID); }
+bool ServerID::operator== (const ServerID & otherID) const {
+    return name == otherID.name && port == otherID.port;
+}
+bool ServerID::operator!= (const ServerID & otherID) const { return !(*this == otherID); }
+
+ServerID::ServerID() {}
 ServerID::ServerID(char* name, char * port): name(name), port(port) {}
 ServerID::ServerID(const ServerID& otherID): name(otherID.name), port(otherID.port) {}
+ServerID & ServerID::operator=(const ServerID & otherID) {
+    name = otherID.name;
+    port = otherID.port;
+    return *this;
+}
 
 const char * ServerID::getName() {
     return name.c_str();

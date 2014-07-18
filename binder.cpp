@@ -2,6 +2,7 @@
 #include <iostream>
 #include <map>
 #include <queue>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,7 +20,12 @@
 
 using namespace std;
 
-typedef std::map<Key, std::queue<ServerID> > proc_m;
+typedef std::map<Key, std::queue<ServerID> > SigServ;
+typedef std::map<ServerID, std::set<Key> > ServSig;
+struct proc_m {
+    SigServ sigToServ;
+    ServSig servToSig;
+};
 
 struct HandlerArgs {
     pthread_t id;
@@ -28,6 +34,7 @@ struct HandlerArgs {
     pthread_mutex_t * procMapMutex;
     bool & term;
     pthread_mutex_t * terminateMutex;
+    ServerID hostID;
 
     HandlerArgs(int soc, proc_m & procMap, pthread_mutex_t * procMapMutex,
             bool & terminate, pthread_mutex_t * terminateMutex):
@@ -52,7 +59,10 @@ struct HandlerArgs {
     }
 };
 
-void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char * packet, int soc) {
+void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char * packet, int soc, ServerID & hostID) {
+    unsigned char messageBuf[MSG_HEADER_LEN] = {0};
+    unsigned int status = REGISTER_FAILURE;
+
     char name[MAX_NAME_LENGTH + 1] = {0};
     getPacketData(packet, SERVER_REG_MSG_NAME, name, MAX_NAME_LENGTH);
     int * argTypes = (int *)(packet + MSG_HEADER_LEN + SERVER_REG_MSG_ARGS);
@@ -65,12 +75,14 @@ void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned cha
     ServerID id(host, port);
 
     pthread_mutex_lock(procMapMutex);
-    procMap[key].push(id);
+    if (procMap.servToSig[id].insert(key).second) {
+        status = REGISTER_SUCCESS;
+        hostID = id;
+        procMap.sigToServ[key].push(id);
+    }
     pthread_mutex_unlock(procMapMutex);
 
-    // Return fail if already registered
-    unsigned char messageBuf[MSG_HEADER_LEN] = {0};
-    sendPacket(soc, messageBuf, 0, REGISTER_SUCCESS);
+    sendPacket(soc, messageBuf, 0, status);
 }
 
 void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char * packet, int soc) {
@@ -84,24 +96,23 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char 
     Key key(name, argTypes);
 
     pthread_mutex_lock(procMapMutex);
-    proc_m::iterator proc = procMap.find(key);
+    SigServ::iterator proc = procMap.sigToServ.find(key);
 
-    for(proc_m::iterator mapIt = procMap.begin(); mapIt != procMap.end(); mapIt++){
-        mapIt->first.print();
-    }
-
-    if (proc != procMap.end()) {
-        status = LOC_SUCCESS;
-        length = BINDER_LOC_MSG_LEN;
-        ServerID & host = proc->second.front();
-
-        std::cerr << "binder: " << host.getPort() << std::endl;
-
-        setPacketData(messageBuf, BINDER_LOC_MSG_HOST, host.getName(), MAX_HOST_LENGTH);
-        setPacketData(messageBuf, BINDER_LOC_MSG_PORT, host.getPort(), MAX_PORT_LENGTH);
-        proc->second.push(host);
+    while (proc != procMap.sigToServ.end() && !proc->second.empty()) {
+        ServerID host(proc->second.front());
         proc->second.pop();
+
+        ServSig::iterator servSigIt = procMap.servToSig.find(host);
+        if (servSigIt != procMap.servToSig.end() && servSigIt->second.count(key)) {
+            status = LOC_SUCCESS;
+            length = BINDER_LOC_MSG_LEN;
+            setPacketData(messageBuf, BINDER_LOC_MSG_HOST, host.getName(), MAX_HOST_LENGTH);
+            setPacketData(messageBuf, BINDER_LOC_MSG_PORT, host.getPort(), MAX_PORT_LENGTH);
+            proc->second.push(host);
+            break;
+        }
     }
+
     pthread_mutex_unlock(procMapMutex);
 
     sendPacket(soc, messageBuf, length, status);
@@ -114,7 +125,7 @@ void process(unsigned char * packet, HandlerArgs * args) {
 
     switch (type) {
         case REGISTER: {
-            registerProc(args->procMap, args->procMapMutex, packet, args->soc);
+            registerProc(args->procMap, args->procMapMutex, packet, args->soc, args->hostID);
             break;
         } case LOC_REQUEST: {
             getProcLoc(args->procMap, args->procMapMutex, packet, args->soc);
@@ -128,15 +139,14 @@ void process(unsigned char * packet, HandlerArgs * args) {
 
 void * handler(void * a) {
     HandlerArgs * args = (HandlerArgs *)a;
+    unsigned char header[MSG_HEADER_LEN];
+    unsigned char * packet = NULL;
+    unsigned int type = 0;
+    unsigned int length = 0;
 
     while (!args->hasTerminated()) {
-        unsigned char header[MSG_HEADER_LEN];
-        unsigned int type = 0;
-        unsigned int length = 0;
-        unsigned char * packet = NULL;
-
         int readSize = selectAndRead(args->soc, header, MSG_HEADER_LEN);
-        if (readSize == 0) {
+        if (readSize <= 0) {
             break;
         } else if (readSize != MSG_HEADER_LEN) {
             continue;
@@ -153,22 +163,29 @@ void * handler(void * a) {
             readSize = myread(args->soc, packet + MSG_HEADER_LEN + offset, length - offset);
         }
         if (readSize <= 0) {
-            continue;
+            break;
         }
 
         process(packet, args);
-        if (type == TERMINATE) break;
         delete[] packet;
+        packet = NULL;
     }
+
+    if (packet) delete[] packet;
+
+    pthread_mutex_lock(args->procMapMutex);
+    args->procMap.servToSig.erase(args->hostID);
+    pthread_mutex_unlock(args->procMapMutex);
+
+    sendPacket(args->soc, header, 0, TERMINATE);
     close(args->soc);
+    return NULL;
 }
 
 int main() {
     proc_m procMap;
     pthread_mutex_t procMapMutex;
     pthread_mutex_init(&procMapMutex, NULL);
-
-    //populateProcMap(procMap, PROC_FILE);
 
     int soc = getBinderSocket();
     if (soc < 0) {

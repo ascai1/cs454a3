@@ -23,9 +23,10 @@ std::string errorStrings[] = {
     "Authentication failed",
     "Method not found",
     "Server failed to send",
-    "Could not register method"
+    "Could not register method",
+    "Could not locate server"
 };
-int lastError = -23;
+int lastError = -24;
 
 RpcException::RpcException(int error): error(error) {}
 

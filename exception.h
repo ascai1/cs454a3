@@ -24,6 +24,7 @@
 #define METHOD_NOT_FOUND -21
 #define SERVER_SEND_FAILED -22
 #define REGISTRATION_FAILED -23
+#define BIND_FAILED -24
 
 #include <string>
 

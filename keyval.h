@@ -27,8 +27,18 @@ struct ServerID {
     std::string name;
     std::string port;
 
+    bool operator< (const ServerID & otherID) const;
+    bool operator> (const ServerID & otherID) const;
+    bool operator<= (const ServerID & otherID) const;
+    bool operator>= (const ServerID & otherID) const;
+    bool operator== (const ServerID & otherID) const;
+    bool operator!= (const ServerID & otherID) const;
+
+    ServerID();
     ServerID(char* name, char * port);
     ServerID(const ServerID& otherID);
+    ServerID & operator=(const ServerID & otherID);
+
     const char * getName();
     const char * getPort();
 };

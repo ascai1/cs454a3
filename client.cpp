@@ -59,6 +59,10 @@ int rpcCall(char * name, int * argTypes, void ** args) {
         int readBytes = myread(soc, response, sizeof(response));
         if (!readBytes) {
             throw RpcException(BINDER_UNAVAILABLE);
+        } else if (readBytes >= MSG_HEADER_LEN && getPacketType(response) == LOC_FAILURE) {
+            throw RpcException(BIND_FAILED);
+        } else if (readBytes >= MSG_HEADER_LEN && getPacketType(response) == TERMINATE) {
+            throw RpcException(BINDER_UNAVAILABLE);
         } else if (readBytes < sizeof(response)) {
             throw RpcException(BAD_RECV_BIND);
         }
@@ -94,14 +98,14 @@ int rpcCall(char * name, int * argTypes, void ** args) {
         readBytes = myread(soc, packet, length);
         if (!readBytes) {
             throw RpcException(SERVER_UNAVAILABLE);
+        } else if (readBytes >= MSG_HEADER_LEN + SERVER_EXEC_MSG_LEN && getPacketType(packet) == EXECUTE_FAILURE) {
+            int failCause = 0;
+            getPacketData(packet, SERVER_EXEC_MSG_CAUSE, &failCause, sizeof(int));
+            if (failCause) {
+                throw RpcException(failCause);
+            }
         } else if (readBytes < serverPacketLength) {
             throw RpcException(BAD_RECV_SERVER);
-        }
-
-        int failCause = 0;
-        getPacketData(packet, SERVER_EXEC_MSG_CAUSE, &failCause, sizeof(int));
-        if (failCause) {
-            throw RpcException(failCause);
         }
 
         getPacketData(packet, SERVER_EXEC_MSG_RESULT, &result, sizeof(int));

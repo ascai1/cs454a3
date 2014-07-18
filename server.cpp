@@ -96,14 +96,12 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
         int readBytes = myread(bindSocket, response, sizeof(response));
         if (!readBytes) {
             throw RpcException(BINDER_UNAVAILABLE);
+        } else if (readBytes >= MSG_HEADER_LEN && getPacketType(response) == REGISTER_FAILURE) {
+            throw RpcException(REGISTRATION_FAILED);
+        } else if (readBytes >= MSG_HEADER_LEN && getPacketType(response) == TERMINATE) {
+            throw RpcException(BINDER_UNAVAILABLE);
         } else if (readBytes < sizeof(response)) {
             throw RpcException(BAD_RECV_BIND);
-        }        
-
-        unsigned int type, length;
-        getPacketHeader(response, length, type);
-        if (type != REGISTER_SUCCESS) {
-            throw RpcException(REGISTRATION_FAILED);
         }
    
         Key key(name, argTypes);
