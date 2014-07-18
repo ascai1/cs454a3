@@ -10,15 +10,27 @@ std::string errorStrings[] = {
     "Server is unavailable",
     "Could not send packet to server",
     "Could not receive packet from server",
-    "No hostname found."
+    "No hostname found.",
+    "No socket information found",
+    "Method name too long",
+    "Server has not registered any methods",
+    "Server sockets not initialized",
+    "Server failed to accept",
+    "Server failed to select",
+    "Could not create packet",
+    "Could not read valid packet header",
+    "Server failed to read",
+    "Authentication failed",
+    "Method not found",
+    "Server failed to send"
 };
-unsigned int lastError = 9;
+int lastError = -22;
 
 RpcException::RpcException(int error): error(error) {}
 
 std::string RpcException::getException() {
     if (error >= 0) return "Success";
-    if (-error - 1 > lastError) return "Unknown error";
+    if (error < lastError) return "Unknown error";
     return errorStrings[-error - 1];
 }
 

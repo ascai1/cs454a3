@@ -42,5 +42,9 @@ void clearPacket(unsigned char * packet) {
 }
 
 void setPacketData(unsigned char * packet, unsigned int offset, const void * data, int length) {
-    memcpy(packet + MSG_HEADER_LEN + offset, data, length);
+    if (!data) {
+        memset(packet + MSG_HEADER_LEN + offset, 0, length);
+    } else {
+        memcpy(packet + MSG_HEADER_LEN + offset, data, length);
+    }
 }

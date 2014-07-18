@@ -4,7 +4,7 @@
 #include "exception.h"
 
 #define BUF_SIZE 256
-;
+
 using namespace std;
 
 typedef int (*skeleton)(int*, void**);
@@ -42,7 +42,7 @@ struct Key{
 
 std::map<Key, skeleton> serverSkeletonMap;
 
-int rpcInit(void){
+int rpcInit(){
     bindSocket = getServerBinderSocket(binderAddr);
     clientSocket = getServerClientSocket();
 
@@ -50,20 +50,28 @@ int rpcInit(void){
         return 0;
     }
     else{
-        return -1;
+        return SOCKETS_NOT_INITIALIZED;
     }
 }
 
 int rpcRegister(char* name, int* argTypes, skeleton f){
-    int argc = 0;
-    for (int* at = argTypes; *at; at++) {
-        argc++;
-    }  
-    
-    int registerPacketLength = SERVER_REG_MSG_ARGS + sizeof(int) * argc;
     unsigned char* packet = NULL;
 
     try{
+        if (strlen(name) > MAX_NAME_LENGTH) {
+            throw RpcException(NAME_TOO_LONG);
+        }
+
+        if(bindSocket != 0 || clientSocket != 0){
+            throw RpcException(SOCKETS_NOT_INITIALIZED);
+        }
+
+        int argc = 0;
+        for (int* at = argTypes; *at; at++) {
+            argc++;
+        }  
+
+        int registerPacketLength = SERVER_REG_MSG_ARGS + sizeof(int) * argc;
         packet = new unsigned char[MSG_HEADER_LEN + registerPacketLength];
         if(!packet){
             throw RpcException(SIG_TOO_LONG);
@@ -116,37 +124,63 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
     return 0;
 }
 
-int rpcExecute(void){
-    unsigned char header[MSG_HEADER_LEN];
-    unsigned int length = 0;
-    unsigned int type = 0;   
-    unsigned int offset = 0;
-    unsigned char* packet = NULL;
-    
+int rpcExecute(){
+    if (socketSkeletonMap.empty()) {
+        return NO_METHODS_REGISTERED;
+    }
+    if (bindSocket != 0 || clientSocket != 0){
+        return SOCKETS_NOT_INITIALIZED;
+    }
+
     while(true){
-        sockaddr_in addr;
-        socklen_t socklen = sizeof(sockaddr_in);
+        unsigned char* packet = NULL;
+        int selectedSocket = 0;
+        int readSocket = 0;
 
-        int acceptClient = accept(clientSocket, (sockaddr *)&addr, socklen);
-        if(!acceptClient){
-            continue;
-        }
+        try {
+            unsigned char header[MSG_HEADER_LEN];
+            unsigned int length = 0;
+            unsigned int type = 0;   
 
-        int readBytes = myread(clientSocket, header, sizeof(header));        
-        if (readSize >= MSG_HEADER_LEN && !type && !length) {
-            getPacketHeader(header, length, type);
-            packet = new unsigned char[length];
-        }
+            sockaddr_in addr;
+            socklen_t socklen = sizeof(sockaddr_in);
 
-        readBytes = myread(clientSocket, packet + offset, sizeof(packet) - offset);
-        offset += readBytes;
+            int socs[2] = {bindSocket, clientSocket};
+            selectedSocket = myselect(socs, 2, NULL);
+            readSocket = selectedSocket;
+            if (selectedSocket == clientSocket) {
+                readSocket = myaccept(clientSocket);
+                if (readSocket < 0) {
+                    throw RpcException(SERVER_ACCEPT_FAILED);
+                }
+            } else if (selectedSocket != bindSocket) {
+                throw RpcException(SERVER_SELECT_FAILED);
+            }
 
-        if(offset == length){
+            int readBytes = myread(readSocket, header, sizeof(header));        
+            if (readBytes >= MSG_HEADER_LEN) {
+                getPacketHeader(header, length, type);
+                packet = new unsigned char[MSG_HEADER_LEN + length];
+                if (!packet) {
+                    throw RpcException(PACKET_ALLOC_FAILED);
+                }
+                setPacketHeader(packet, length, type);
+            } else {
+                throw RpcException(BAD_PACKET_HEADER);
+            }
+
+            for (unsigned int offset = 0; readBytes > 0 && offset < length; offset += readBytes) {
+                readBytes = myread(clientSocket, packet + MSG_HEADER_LEN + offset, length - offset);
+            }
+            if (readBytes <= 0) {
+                throw RpcException(SERVER_READ_FAILED);
+            }
+
             if(type == TERMINATE){
                 if(memcmp(&binderAddr, &addr, sizeof(sockaddr_in)) == 0){
                     break;
                 }
-                continue;
+                throw RpcException(AUTHENTICATION_FAILED);
             }
 
             char methodName[MAX_NAME_LENGTH + 1] = {0};
@@ -157,29 +191,53 @@ int rpcExecute(void){
             int argTypeCount = 0;
             for (int* at = argTypes; *at; at++) {
                 argTypeCount++;
-            }  
+            }
 
             Key key(methodName, argTypes);
             map<Key, skeleton>::iterator it = serverSkeletonMap.find(key);
             if (it == serverSkeletonMap.end()) {
-                // send failure
-                continue;
+                throw RpcException(METHOD_NOT_FOUND);
             }
 
             unsigned int argsLength = getTotalArgLength(argTypes);
             unsigned int argsOffset = packet + MSG_HEADER_LEN + CLIENT_EXEC_MSG_ARGS + sizeof(int) * argTypeCount;
             void** args = getPacketArgPointers(packet, argsOffset, argTypes);
-     
+ 
             int result = (it->second)(argTypes, args);
             if(result == 0){
-                int sendBytes = sendPacket(clientSocket, packet, sizeof(packet), EXECUTE_SUCCESS);
+                setPacketArgData(packet, argsOffset, argTypes, args);
+                if (sendPacket(readSocket, packet, sizeof(packet), EXECUTE_SUCCESS) <= 0) {
+                    throw RpcException(SERVER_SEND_FAILED);
+                }
             }
             else{
-                memcpy(packet, &result, sizeof(int));
-                int sendBytes = sendPacket(clientSocket, packet, sizeof(int), EXECUTE_FAILURE);
+                setPacketData(packet, SERVER_FAIL_MSG_CAUSE, NULL, sizeof(int));
+                setPacketData(packet, SERVER_FAIL_MSG_RESULT, &result, sizeof(int));
+                if(sendPacket(readSocket, packet, SERVER_FAIL_MSG_LEN, EXECUTE_FAILURE) <= 0) {
+                    throw RpcException(SERVER_SEND_FAILED);
+                }
+            }
+        } catch (const RpcException e) {
+            std::cerr << "rpcExecute: " << e.getException() << std::endl;
+
+            int err = e.getErrorCode();
+            if (readSocket && (e.getErrorCode() != SERVER_SEND_FAILED)) {
+                char failPacket[MSG_HEADER_LEN + SERVER_FAIL_MSG_LEN] = {0};
+                setPacketData(failPacket, SERVER_FAIL_MSG_CAUSE, &err, sizeof(int));
+                sendPacket(readSocket, failPacket, SERVER_FAIL_MSG_LEN, EXECUTE_FAILURE);
             }
         }
+
+        if (packet) delete[] packet;
+        if (selectedSocket == clientSocket) {
+            close(readSocket);
+        }
     }
+
+    close(bindSocket);
+    close(clientSocket);
+    bindSocket = 0;
+    clientSocket = 0;
 
     return 0;  
 }

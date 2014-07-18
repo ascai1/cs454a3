@@ -4,25 +4,30 @@
 #include "exception.h"
 
 int rpcCall(char * name, int * argTypes, void ** args) {
-    int argc = 0;
-    for (int * at = argTypes; *at; at++) {
-        argc++;
-    }
-
     int soc = 0;
-    int binderPacketLength = CLIENT_LOC_MSG_ARGS + sizeof(int) * argc;
-    int serverPacketLength = CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc + getTotalArgLength(argTypes);
     unsigned char * packet = NULL;
 
     try {
-        soc = getClientBindSoc(); 
-        if (soc < 0) {
-            throw RpcException(BAD_BINDER_SOCK);
+        if (strlen(name) > MAX_NAME_LENGTH) {
+            throw RpcException(NAME_TOO_LONG);
         }
+
+        int argc = 0;
+        for (int * at = argTypes; *at; at++) {
+            argc++;
+        }
+    
+        int binderPacketLength = CLIENT_LOC_MSG_ARGS + sizeof(int) * argc;
+        int serverPacketLength = CLIENT_EXEC_MSG_ARGS + sizeof(int) * argc + getTotalArgLength(argTypes);
 
         packet = new unsigned char[MSG_HEADER_LEN + std::max(binderPacketLength, serverPacketLength)];
         if (!packet) {
             throw RpcException(SIG_TOO_LONG);
+        }
+
+        soc = getClientBindSocket(); 
+        if (soc < 0) {
+            throw RpcException(BAD_BINDER_SOCK);
         }
 
         clearPacket(packet);
@@ -38,26 +43,23 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             throw RpcException(BAD_SEND_BIND);
         }
 
-        int readBytes;
-        { 
-            unsigned char response[MSG_HEADER_LEN + BINDER_LOC_MSG_LEN];
-            readBytes = myread(soc, response, sizeof(response));
-            if (!readBytes) {
-                throw RpcException(BINDER_UNAVAILABLE);
-            } else if (readBytes < sizeof(response)) {
-                throw RpcException(BAD_RECV_BIND);
-            }
+        unsigned char response[MSG_HEADER_LEN + BINDER_LOC_MSG_LEN];
+        int readBytes = myread(soc, response, sizeof(response));
+        if (!readBytes) {
+            throw RpcException(BINDER_UNAVAILABLE);
+        } else if (readBytes < sizeof(response)) {
+            throw RpcException(BAD_RECV_BIND);
+        }
 
-            close(soc);
+        close(soc);
 
-            unsigned char name[MAX_HOST_LENGTH + 1] = {0};
-            unsigned char port[MAX_PORT_LENGTH + 1] = {0};
-            getPacketData(response, BINDER_LOC_MSG_HOST, name, MAX_HOST_LENGTH);
-            getPacketData(response, BINDER_LOC_MSG_PORT, name, MAX_PORT_LENGTH);
-            soc = getClientServerSoc(name, port);
-            if (soc < 0) {
-                throw RpcException(BAD_SERVER_SOCK);
-            }
+        unsigned char name[MAX_HOST_LENGTH + 1] = {0};
+        unsigned char port[MAX_PORT_LENGTH + 1] = {0};
+        getPacketData(response, BINDER_LOC_MSG_HOST, name, MAX_HOST_LENGTH);
+        getPacketData(response, BINDER_LOC_MSG_PORT, name, MAX_PORT_LENGTH);
+        soc = getClientServerSocket(name, port);
+        if (soc < 0) {
+            throw RpcException(BAD_SERVER_SOCK);
         }
 
         if (CLIENT_LOC_MSG_NAME != CLIENT_EXEC_MSG_NAME) {
