@@ -4,17 +4,19 @@
 
 int main() {
     int result;
-    int nums[] = {1,2,3,4};
+    long num1 = 1;
+    short num2 = 1;
 
     char name[] = "sum";
     int argTypes[] = {
         ARG_OUTPUT|ARG_INT,
-        ARG_INPUT|ARG_INT|4,
+        ARG_INPUT|ARG_LONG,
+        ARG_INPUT|ARG_SHORT,
         0
     };
-    int * args[] = {&result, nums};
+    void* args[] = {&result, &num1, &num2};
     int ret = rpcCall(name, argTypes, (void **)args);
     std::cout << "rpcCall returned " << ret << ", final result is " << result << std::endl;
-  //  rpcTerminate();
+    rpcTerminate();
     return 0;
 }

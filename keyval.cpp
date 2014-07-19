@@ -4,6 +4,7 @@
 #include "packet.h"
 #include "keyval.h"
 
+// printing method
 void Key::print() const{
     std::cerr << "Name: " << name << std::endl;
 
@@ -12,6 +13,7 @@ void Key::print() const{
     }
 }
 
+// overwritten for map/other stdlib use
 bool Key::operator< (const Key& otherKey) const {
     if(name != otherKey.name){
         return name < otherKey.name;
@@ -48,6 +50,9 @@ bool Key::operator== (const Key& otherKey) const {
 }
 bool Key::operator!= (const Key& otherKey) const { return !(*this == otherKey); }
 
+// constructor
+// puts method name into name
+// puts argument types into argType vector
 Key::Key(char* name, int* argTypes): name(name)
 {
     for(int* at = argTypes; *at; at++){
@@ -61,7 +66,8 @@ Key::Key(char* name, int* argTypes): name(name)
 
 Key::Key(const Key& otherKey): name(otherKey.name), argTypes(otherKey.argTypes) {}
 
-
+// "value" 
+// the server which has the method being registered
 bool ServerID::operator< (const ServerID & otherID) const {
     return name < otherID.name || port < otherID.port;
 }

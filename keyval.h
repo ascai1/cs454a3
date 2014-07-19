@@ -5,6 +5,8 @@
 #include <vector>
 #include <iostream>
 
+// used as the key in rpc system maps
+// contains information regarding the method name and parameters it uses
 struct Key {
     std::string name;
     typedef std::vector<unsigned int> types_v;
@@ -23,6 +25,8 @@ struct Key {
     void print() const;
 };
 
+// used as the value in rpc system maps
+// contains information regarding the server name and port of the method
 struct ServerID {
     std::string name;
     std::string port;
