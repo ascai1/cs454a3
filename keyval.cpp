@@ -33,20 +33,13 @@ bool Key::operator> (const Key& otherKey) const { return otherKey < *this; }
 bool Key::operator<= (const Key& otherKey) const { return !(otherKey < *this); }
 bool Key::operator>= (const Key& otherKey) const { return !(*this < otherKey); }
 bool Key::operator== (const Key& otherKey) const {
-    bool equals = true;
     if(name != otherKey.name){
-        equals = false;
+        return false;
     }  
-    else if (argTypes.size() != otherKey.argTypes.size()) {
-        equals = false;
+    if (argTypes.size() != otherKey.argTypes.size()) {
+        return false;
     }
-    else{
-        equals = std::equal(argTypes.begin(), argTypes.end(), otherKey.argTypes.begin());
-    }
-
-    std::cerr << "name: " << this->name << " " << "otherkey: " << otherKey.name << " : " << equals << std::endl;
-
-    return equals;
+    return std::equal(argTypes.begin(), argTypes.end(), otherKey.argTypes.begin());
 }
 bool Key::operator!= (const Key& otherKey) const { return !(*this == otherKey); }
 
