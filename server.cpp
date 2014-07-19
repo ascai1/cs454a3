@@ -110,7 +110,7 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
     catch (const RpcException e){
         std::cerr << "rpcRegister: " << e.getException() << std::endl;
         if (packet) delete[] packet;
-            return e.getErrorCode();        
+        return e.getErrorCode();        
     }
 
     if (packet) delete[] packet;
@@ -135,9 +135,6 @@ int rpcExecute(){
             unsigned int length = 0;
             unsigned int type = 0;   
 
-            sockaddr_in addr;
-            socklen_t socklen = sizeof(sockaddr_in);
-
             int socs[2] = {bindSocket, clientSocket};
             selectedSocket = myselect(socs, 2, NULL);
             readSocket = selectedSocket;
@@ -151,7 +148,7 @@ int rpcExecute(){
                 throw RpcException(SERVER_SELECT_FAILED);
             }
 
-            int readBytes = myread(readSocket, header, sizeof(header));        
+            int readBytes = myread(readSocket, header, sizeof(header));
           
             std::cerr << "readSocket: " << readSocket << std::endl;
             std::cerr << "readbytes: " << readBytes << std::endl;
@@ -175,7 +172,7 @@ int rpcExecute(){
             }
 
             if(type == TERMINATE){
-                if(memcmp(&binderAddr, &addr, sizeof(sockaddr_in)) == 0){
+                if(selectedSocket == bindSocket) {
                     break;
                 }
                 throw RpcException(AUTHENTICATION_FAILED);

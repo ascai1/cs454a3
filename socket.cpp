@@ -196,7 +196,7 @@ int selectAndAccept(int soc) {
         return myaccept(soc);
     }
 
-    return -1;
+    return ret;
 }
 
 int selectAndRead(int soc, unsigned char * buf, unsigned int size) {
@@ -206,7 +206,7 @@ int selectAndRead(int soc, unsigned char * buf, unsigned int size) {
         return myread(soc, buf, size);
     }
 
-    return -1;
+    return ret - 1;
 }
 
 int myaccept(int soc) {

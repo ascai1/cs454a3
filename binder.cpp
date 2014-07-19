@@ -146,10 +146,10 @@ void * handler(void * a) {
 
     while (!args->hasTerminated()) {
         int readSize = selectAndRead(args->soc, header, MSG_HEADER_LEN);
-        if (readSize <= 0) {
-            break;
-        } else if (readSize != MSG_HEADER_LEN) {
+        if (readSize == -1) {
             continue;
+        } else if (readSize != MSG_HEADER_LEN) {
+            break;
         }
 
         getPacketHeader(header, length, type);
@@ -201,8 +201,10 @@ int main() {
 
     while (!mainArgs.hasTerminated()) {
         int connSoc = selectAndAccept(soc);
-        if (connSoc < 0) {
+        if (connSoc == 0) {
             continue;
+        } else if (connSoc < 0) {
+            break;
         }
 
         HandlerArgs * args = new HandlerArgs(connSoc, procMap, &procMapMutex, terminate, &terminateMutex);
