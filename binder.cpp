@@ -20,13 +20,16 @@
 
 using namespace std;
 
+// Map method signature to hosts (round robin)
 typedef std::map<Key, std::queue<ServerID> > SigServ;
+// Map host to method signatures (for deduping and some server status checking)
 typedef std::map<ServerID, std::set<Key> > ServSig;
 struct proc_m {
     SigServ sigToServ;
     ServSig servToSig;
 };
 
+// Variables passed into each thread
 struct HandlerArgs {
     pthread_t id;
     int soc;
@@ -59,6 +62,8 @@ struct HandlerArgs {
     }
 };
 
+// Given a received REGISTER packet, register the host with the given method signature
+// and send a response to socket "soc". Also place the hostname and port into "hostID".
 void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char * packet, int soc, ServerID & hostID) {
     unsigned char messageBuf[MSG_HEADER_LEN] = {0};
     unsigned int status = REGISTER_FAILURE;
@@ -75,16 +80,18 @@ void registerProc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned cha
     ServerID id(host, port);
 
     pthread_mutex_lock(procMapMutex);
-    if (procMap.servToSig[id].insert(key).second) {
+    if (procMap.servToSig[id].insert(key).second) {     // True if redundant map insertion was successful
         status = REGISTER_SUCCESS;
         hostID = id;
-        procMap.sigToServ[key].push(id);
+        procMap.sigToServ[key].push(id);    // Push into main map
     }
     pthread_mutex_unlock(procMapMutex);
 
     sendPacket(soc, messageBuf, 0, status);
 }
 
+// Given a received LOC_REQUEST packet, find an appropriate host
+// for the requested method and send a response to socket "soc".
 void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char * packet, int soc) {
     unsigned char messageBuf[MSG_HEADER_LEN + BINDER_LOC_MSG_LEN] = {0};
     unsigned int status = LOC_FAILURE;
@@ -98,11 +105,13 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char 
     pthread_mutex_lock(procMapMutex);
     SigServ::iterator proc = procMap.sigToServ.find(key);
 
+    // Find the given method in the map, and look for an appropriate host
     while (proc != procMap.sigToServ.end() && !proc->second.empty()) {
         ServerID host(proc->second.front());
         proc->second.pop();
 
         ServSig::iterator servSigIt = procMap.servToSig.find(host);
+        // Has the server gone down or unregistered this method?
         if (servSigIt != procMap.servToSig.end() && servSigIt->second.count(key)) {
             status = LOC_SUCCESS;
             length = BINDER_LOC_MSG_LEN;
@@ -118,7 +127,7 @@ void getProcLoc(proc_m & procMap, pthread_mutex_t * procMapMutex, unsigned char 
     sendPacket(soc, messageBuf, length, status);
 }
 
-// What if send is unsuccessful due to other side closing? have to return a code
+// Handle an incoming packet differently based on packet type
 void process(unsigned char * packet, HandlerArgs * args) {
     unsigned int length, type;
     getPacketHeader(packet, length, type);
@@ -146,19 +155,20 @@ void * handler(void * a) {
 
     while (!args->hasTerminated()) {
         int readSize = selectAndRead(args->soc, header, MSG_HEADER_LEN);
-        if (readSize == -1) {
+        if (readSize == -1) {       // This means that "select" returned zero
             continue;
-        } else if (readSize != MSG_HEADER_LEN) {
+        } else if (readSize != MSG_HEADER_LEN) {    // Socket is closed, or something went wrong
             break;
         }
 
-        getPacketHeader(header, length, type);
+        getPacketHeader(header, length, type);      // Retrieve header length and type
         packet = new unsigned char[MSG_HEADER_LEN + length];
         if (!packet) {
             continue;
         }
         setPacketHeader(packet, length, type);
 
+        // Loop until the entire packet is received
         for (unsigned int offset = 0; readSize > 0 && offset < length; offset += readSize) {
             readSize = myread(args->soc, packet + MSG_HEADER_LEN + offset, length - offset);
         }
@@ -173,10 +183,12 @@ void * handler(void * a) {
 
     if (packet) delete[] packet;
 
+    // Server is going down, unregister this host from the redundant map
     pthread_mutex_lock(args->procMapMutex);
     args->procMap.servToSig.erase(args->hostID);
     pthread_mutex_unlock(args->procMapMutex);
 
+    // Send terminate request to server (or client)
     sendPacket(args->soc, header, 0, TERMINATE);
     close(args->soc);
     return NULL;
@@ -196,14 +208,15 @@ int main() {
     pthread_mutex_t terminateMutex;
     pthread_mutex_init(&terminateMutex, NULL);
 
-    std::vector<HandlerArgs *> threads;
+    // This is just for checking "terminate" in a thread-safe way
     HandlerArgs mainArgs(soc, procMap, &procMapMutex, terminate, &terminateMutex);
+    std::vector<HandlerArgs *> threads;
 
     while (!mainArgs.hasTerminated()) {
         int connSoc = selectAndAccept(soc);
-        if (connSoc == 0) {
+        if (connSoc == 0) {         // "select" returned zero
             continue;
-        } else if (connSoc < 0) {
+        } else if (connSoc < 0) {   // Something went wrong
             break;
         }
 
@@ -218,6 +231,7 @@ int main() {
         }
     }
 
+    // Join all threads before closing main thread
     for (std::vector<HandlerArgs *>::iterator it = threads.begin(); it != threads.end(); it++) {
         pthread_join((*it)->id, NULL);
         delete *it;

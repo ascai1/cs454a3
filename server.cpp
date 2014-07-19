@@ -19,18 +19,16 @@
 
 using namespace std;
 
-int bindSocket = 0;
-int clientSocket = 0;
+int bindSocket = 0;         // "Binder" socket
+int clientSocket = 0;       // "Open" socket
 sockaddr_in binderAddr;
 
+// Simple mapping of method signature to skeleton, local to server
 std::map<Key, skeleton> serverSkeletonMap;
 
 int rpcInit(){
     bindSocket = getServerBinderSocket(binderAddr);
     clientSocket = getServerClientSocket();
-
-    std::cerr << "bindsocket: " << bindSocket << std::endl;
-    std::cerr << "clientSocket: " << clientSocket << std::endl;
 
     if(bindSocket > 0 && clientSocket > 0){
         return 0;
@@ -57,6 +55,7 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
             argc++;
         }  
 
+        // ARGTYPE offset + (argc + 1) integer ARGTYPEs
         int registerPacketLength = SERVER_REG_MSG_ARGS + sizeof(int) * (argc + 1);
         packet = new unsigned char[MSG_HEADER_LEN + registerPacketLength];
         if(!packet){
@@ -69,16 +68,17 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
             setPacketData(packet, SERVER_REG_MSG_ARGS + sizeof(int) * i, argTypes + i, sizeof(int));
         }
 
+        // Get this machine's host name
         char hostname[MAX_HOST_LENGTH] = {0};
         if(getHost(hostname) < 0){
             throw RpcException(NO_HOST_NAME);
         }
 
+        // Get the port associated with the open socket
         sockaddr_in addr;
         if(getSockName(clientSocket, &addr)){
             throw RpcException(NO_PORT_NUMBER);
         }
-
         std::stringstream port;
         port << ntohs(addr.sin_port);
 
@@ -104,6 +104,7 @@ int rpcRegister(char* name, int* argTypes, skeleton f){
             throw RpcException(BAD_RECV_BIND);
         }
    
+        // Place method signature in local database
         Key key(name, argTypes);
         serverSkeletonMap[key] = f;
     }
@@ -129,17 +130,21 @@ int rpcExecute(){
         unsigned char* packet = NULL;
         int selectedSocket = 0;
         int readSocket = 0;
+        void ** args = NULL;
 
         try {
             unsigned char header[MSG_HEADER_LEN];
             unsigned int length = 0;
             unsigned int type = 0;   
 
+            // Call "select" on both the binder socket and open socket
             int socs[2] = {bindSocket, clientSocket};
             selectedSocket = myselect(socs, 2, NULL);
             readSocket = selectedSocket;
 
             if (selectedSocket == clientSocket) {
+                // If client socket was selected, we have to call "accept"
+                // on it, and obtain a new socket to read from later
                 readSocket = myaccept(clientSocket);
                 if (readSocket < 0) {
                     throw RpcException(SERVER_ACCEPT_FAILED);
@@ -150,8 +155,6 @@ int rpcExecute(){
 
             int readBytes = myread(readSocket, header, sizeof(header));
           
-            std::cerr << "readSocket: " << readSocket << std::endl;
-            std::cerr << "readbytes: " << readBytes << std::endl;
             if (readBytes >= MSG_HEADER_LEN) {
                 getPacketHeader(header, length, type);
                 packet = new unsigned char[MSG_HEADER_LEN + length];
@@ -172,22 +175,21 @@ int rpcExecute(){
             }
 
             if(type == TERMINATE){
+                // Authenticate by checking that we received from the binder socket
                 if(selectedSocket == bindSocket) {
                     break;
                 }
                 throw RpcException(AUTHENTICATION_FAILED);
+            } else if (type != EXECUTE) {
+                throw RpcException(INVALID_PACKET_TYPE);
             }
-
-            std::cerr << "length: " << length << std::endl;
-            for(unsigned char* a = packet + MSG_HEADER_LEN; (a - packet) < (MSG_HEADER_LEN + length); a++){
-                std::cerr << "a: " << (int) *a << std::endl;
-            }
-
 
             char methodName[MAX_NAME_LENGTH + 1] = {0};
             getPacketData(packet, CLIENT_EXEC_MSG_NAME, methodName, MAX_NAME_LENGTH);
+            // Clear out the name field, since we'll be reusing this packet later
             setPacketData(packet, CLIENT_EXEC_MSG_NAME, NULL, MAX_NAME_LENGTH);
 
+            // Directly point to the packet to get ARGTYPEs
             int* argTypes = (int*)(packet + MSG_HEADER_LEN + CLIENT_EXEC_MSG_ARGS);   
 
             int argTypeCount = 0;
@@ -195,23 +197,25 @@ int rpcExecute(){
                 argTypeCount++;
             }
 
+            // Find the skeleton corresponding to the requested method signature
             Key key(methodName, argTypes);
-
             map<Key, skeleton>::iterator it = serverSkeletonMap.find(key);
             if (it == serverSkeletonMap.end()) {
                 throw RpcException(METHOD_NOT_FOUND);
             }
 
-            unsigned int argsLength = getTotalArgLength(argTypes);
+            // Calculate the offset of the ARGs (not ARGTYPEs) field
             unsigned int argsOffset = CLIENT_EXEC_MSG_ARGS + sizeof(int) * (argTypeCount + 1);
-            void** args = getPacketArgPointers(packet, argsOffset, argTypes);
+
+            // The args array will contain pointers that point directly back to the packet
+            args = getPacketArgPointers(packet, argsOffset, argTypes);
  
+            // Call the skeleton
             int result = (it->second)(argTypes, args);
-
-            std::cerr << result << std::endl;
-
             setPacketData(packet, SERVER_EXEC_MSG_RESULT, &result, sizeof(int));
+
             if(result == 0){
+                // Marshall "output" args into packet
                 setPacketArgData(packet, argsOffset, argTypes, args, ARG_OUTPUT);            
                 if (sendPacket(readSocket, packet, length, EXECUTE_SUCCESS) <= 0) {
                     throw RpcException(SERVER_SEND_FAILED);
@@ -234,6 +238,8 @@ int rpcExecute(){
         }
 
         if (packet) delete[] packet;
+        if (args) delete[] args;
+
         if (selectedSocket == clientSocket) {
             close(readSocket);
         }

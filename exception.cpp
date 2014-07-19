@@ -24,9 +24,10 @@ std::string errorStrings[] = {
     "Method not found",
     "Server failed to send",
     "Could not register method",
-    "Could not locate server"
+    "Could not locate server",
+    "Invalid packet type"
 };
-int lastError = -24;
+int lastError = -25;
 
 RpcException::RpcException(int error): error(error) {}
 

@@ -25,12 +25,12 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             argc++;
         }
     
+        // ARGTYPE offset + (argc + 1) integer ARGTYPEs
         int binderPacketLength = CLIENT_LOC_MSG_ARGS + sizeof(int) * (argc + 1);
+        // ARGTYPE offset + (argc + 1) integer ARGTYPEs + calculated length of all args
         int serverPacketLength = CLIENT_EXEC_MSG_ARGS + sizeof(int) * (argc + 1) + getTotalArgLength(argTypes);
+        // Allocate enough space to fit both
         int length = std::max(binderPacketLength, serverPacketLength);
-
-        std::cerr << getTotalArgLength(argTypes) << std::endl;
-        std::cerr << "length: " << length << std::endl;
 
         packet = new unsigned char[MSG_HEADER_LEN + length];
         if (!packet) {
@@ -78,6 +78,8 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             throw RpcException(BAD_SERVER_SOCK);
         }
 
+        // Rewrite name and argtypes only if the field offsets
+        // differ for binder and server messages
         if (CLIENT_LOC_MSG_NAME != CLIENT_EXEC_MSG_NAME || CLIENT_LOC_MSG_ARGS != CLIENT_EXEC_MSG_ARGS) {
             clearPacket(packet);
             setPacketData(packet, CLIENT_EXEC_MSG_NAME, name, std::min(MAX_NAME_LENGTH, (int)strlen(name)));
@@ -86,6 +88,7 @@ int rpcCall(char * name, int * argTypes, void ** args) {
             }
         }
 
+        // Marshall "input" args into packet
         setPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * (argc + 1), argTypes, args, ARG_INPUT);
 
         sendBytes = sendPacket(soc, packet, serverPacketLength, EXECUTE);
@@ -110,6 +113,7 @@ int rpcCall(char * name, int * argTypes, void ** args) {
 
         getPacketData(packet, SERVER_EXEC_MSG_RESULT, &result, sizeof(int));
         if (!result) {
+            // Unmarshall "output" args from packet
             getPacketArgData(packet, CLIENT_EXEC_MSG_ARGS + sizeof(int) * (argc + 1), argTypes, args, ARG_OUTPUT);
         }
     } catch (const RpcException e) {
@@ -121,6 +125,7 @@ int rpcCall(char * name, int * argTypes, void ** args) {
     return result;
 }
 
+// Send TERMINATE to binder
 int rpcTerminate() {
     int soc = getClientBinderSocket(); 
     if (soc < 0) {

@@ -25,6 +25,7 @@
 #define SERVER_SEND_FAILED -22
 #define REGISTRATION_FAILED -23
 #define BIND_FAILED -24
+#define INVALID_PACKET_TYPE -25
 
 #include <string>
 
